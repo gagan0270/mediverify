@@ -1,0 +1,7 @@
+{
+  "name": "MediVerify - Medicine Safety Platform",
+  "description": "A comprehensive healthcare application for verifying prescribed medications against physical tablets using AI-powered OCR and matching, ensuring patient safety through allergy and drug interaction analysis.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
