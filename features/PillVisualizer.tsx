@@ -10,7 +10,7 @@ const PillVisualizer: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const ratios = ["1:1", "3:4", "4:3", "9:16", "16:9"];
+  const ratios = ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"];
   const sizes = ["1K", "2K", "4K"];
 
   const handleGenerate = async () => {
@@ -66,7 +66,7 @@ const PillVisualizer: React.FC = () => {
 
             <div className="space-y-2">
               <label className="text-sm font-black text-slate-700 dark:text-slate-300 uppercase tracking-widest">Aspect Ratio</label>
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 {ratios.map(r => (
                   <button 
                     key={r}

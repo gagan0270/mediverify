@@ -30,7 +30,7 @@ export const analyzeHealthImage = async (image: string, lang: Language = 'en'): 
       ]
     },
     config: {
-      thinkingConfig: { thinkingBudget: 16384 }
+      thinkingConfig: { thinkingBudget: 32768 }
     }
   });
   return response.text || "No analysis could be generated.";
@@ -42,8 +42,8 @@ export const getDeepReasoning = async (query: string, lang: Language = 'en'): Pr
     model: 'gemini-3-pro-preview',
     contents: query,
     config: {
-      thinkingConfig: { thinkingBudget: 16384 },
-      systemInstruction: `You are a world-class clinical expert. Provide highly detailed, deep reasoning. ${getLanguageInstruction(lang)}`
+      thinkingConfig: { thinkingBudget: 32768 },
+      systemInstruction: `You are a world-class clinical expert. Provide highly detailed, deep reasoning for complex queries. ${getLanguageInstruction(lang)}`
     }
   });
   return response.text || "No reasoning could be generated.";
@@ -79,7 +79,7 @@ export const getMedicineRates = async (medicines: TabletData[], lang: Language =
   const medList = medicines.map(m => m.name).join(', ');
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Find market rates and generic alternatives for: ${medList}. ${getLanguageInstruction(lang)}`,
+    contents: `Find current real-world market rates, local pharmacy prices, and generic alternatives for: ${medList}. Provide accurate price ranges. ${getLanguageInstruction(lang)}`,
     config: {
       tools: [{ googleSearch: {} }]
     }
@@ -259,7 +259,7 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
     model: "gemini-3-pro-preview",
     contents: prompt,
     config: {
-      thinkingConfig: { thinkingBudget: 12288 },
+      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
