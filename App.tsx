@@ -77,6 +77,7 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null; children: React.React
   if (!user) {
     return <Navigate to="/onboarding" replace />;
   }
+  // Fixed: Use React Fragment to correctly render children instead of invalid 'children' tag
   return <>{children}</>;
 };
 
@@ -240,6 +241,60 @@ const AppContent: React.FC = () => {
         </Routes>
       </main>
 
+      <footer className="bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 py-12 px-6 mt-12 mb-24 md:mb-0 transition-colors">
+        <div className="max-w-7xl mx-auto flex flex-col items-center text-center space-y-8">
+          <div className="space-y-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500">Project Development</p>
+            <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Developed by YASHWANTH H M & GAGAN V</h4>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl pt-8 border-t border-slate-100 dark:border-slate-800">
+            <div className="space-y-4 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+              <div className="w-12 h-12 bg-blue-600/10 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                <i className="fas fa-user-tie text-xl"></i>
+              </div>
+              <p className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">YASHWANTH H M</p>
+              <div className="flex flex-col gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
+                <a href="mailto:yashwanth.32997@gmail.com" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-envelope opacity-50"></i>
+                  yashwanth.32997@gmail.com
+                </a>
+                <a href="tel:8618032997" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-phone opacity-50"></i>
+                  8618032997
+                </a>
+              </div>
+            </div>
+            
+            <div className="space-y-4 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+              <div className="w-12 h-12 bg-indigo-600/10 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                <i className="fas fa-user-tie text-xl"></i>
+              </div>
+              <p className="text-sm font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400">GAGAN V</p>
+              <div className="flex flex-col gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
+                <a href="mailto:Gagan00270@gmail.com" className="hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-envelope opacity-50"></i>
+                  Gagan00270@gmail.com
+                </a>
+                <a href="tel:6361314885" className="hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-phone opacity-50"></i>
+                  6361314885
+                </a>
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-8 text-slate-400 dark:text-slate-600 flex flex-col items-center gap-4">
+            <div className="flex items-center gap-3">
+              <div className="h-px w-8 bg-slate-200 dark:bg-slate-800"></div>
+              <i className="fas fa-shield-heart text-blue-600/30"></i>
+              <div className="h-px w-8 bg-slate-200 dark:bg-slate-800"></div>
+            </div>
+            <p className="text-[10px] font-bold tracking-widest uppercase">MediVerify Healthcare Intelligence v1.0</p>
+          </div>
+        </div>
+      </footer>
+
       <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-2xl border border-white/10 p-4 flex justify-between items-center z-[100] rounded-[2.5rem] shadow-2xl">
         <Link to="/" className="flex flex-col items-center gap-1 flex-1 text-slate-500 hover:text-white transition-colors">
           <i className="fas fa-house-chimney text-lg"></i>
@@ -288,7 +343,7 @@ const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children })
     t: (translations as any)[language]
   }), [language]);
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageProvider>;
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 };
 
 const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

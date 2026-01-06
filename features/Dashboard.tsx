@@ -142,7 +142,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, history }) => {
                 {searchResults && (
                   <div className="p-5 bg-white/5 backdrop-blur-3xl rounded-2xl border border-white/10 animate-in zoom-in-95 duration-500">
                      <p className="text-slate-300 leading-relaxed font-medium italic mb-4 text-sm">"{searchResults.text}"</p>
-                     <div className="flex items-center gap-2 text-[8px] font-black uppercase text-blue-400 tracking-widest">
+                     
+                     {/* Added source list to comply with mandatory Google Search grounding URL display requirements */}
+                     {searchResults.sources && searchResults.sources.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-white/10 space-y-2">
+                           <p className="text-[8px] font-black uppercase text-slate-400 tracking-widest mb-1">Sources:</p>
+                           <div className="flex flex-wrap gap-2">
+                              {searchResults.sources.map((s: any, idx: number) => (
+                                 <a key={idx} href={s.web?.uri} target="_blank" rel="noopener noreferrer" className="text-[9px] text-blue-400 hover:underline flex items-center gap-1 bg-white/5 px-2 py-1 rounded-lg transition-colors hover:bg-white/10">
+                                    <i className="fas fa-link text-[7px]"></i>
+                                    {s.web?.title || 'External Source'}
+                                 </a>
+                              ))}
+                           </div>
+                        </div>
+                     )}
+
+                     <div className="flex items-center gap-2 text-[8px] font-black uppercase text-blue-400 tracking-widest mt-4">
                         <i className="fas fa-check-double"></i>
                         Clinical Data Grounded by Gemini Search
                      </div>
