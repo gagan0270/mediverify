@@ -77,7 +77,6 @@ const ProtectedRoute: React.FC<{ user: UserProfile | null; children: React.React
   if (!user) {
     return <Navigate to="/onboarding" replace />;
   }
-  // Fixed: Use React Fragment to correctly render children instead of invalid 'children' tag
   return <>{children}</>;
 };
 
@@ -86,7 +85,6 @@ const AppContent: React.FC = () => {
   const { theme, toggleTheme } = useTheme();
   const [isInitializing, setIsInitializing] = useState(true);
 
-  // Global error handler for 'Requested entity was not found.' to re-prompt API key selection
   useEffect(() => {
     const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
       const errorMessage = event.reason?.message || '';
@@ -245,27 +243,10 @@ const AppContent: React.FC = () => {
         <div className="max-w-7xl mx-auto flex flex-col items-center text-center space-y-8">
           <div className="space-y-2">
             <p className="text-[10px] font-black uppercase tracking-[0.3em] text-slate-400 dark:text-slate-500">Project Development</p>
-            <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Developed by YASHWANTH H M & GAGAN V</h4>
+            <h4 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Developed by Gagan V and Yashwanth H M</h4>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-3xl pt-8 border-t border-slate-100 dark:border-slate-800">
-            <div className="space-y-4 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
-              <div className="w-12 h-12 bg-blue-600/10 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
-                <i className="fas fa-user-tie text-xl"></i>
-              </div>
-              <p className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">YASHWANTH H M</p>
-              <div className="flex flex-col gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
-                <a href="mailto:yashwanth.32997@gmail.com" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
-                  <i className="fas fa-envelope opacity-50"></i>
-                  yashwanth.32997@gmail.com
-                </a>
-                <a href="tel:8618032997" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
-                  <i className="fas fa-phone opacity-50"></i>
-                  8618032997
-                </a>
-              </div>
-            </div>
-            
             <div className="space-y-4 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
               <div className="w-12 h-12 bg-indigo-600/10 text-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
                 <i className="fas fa-user-tie text-xl"></i>
@@ -279,6 +260,23 @@ const AppContent: React.FC = () => {
                 <a href="tel:6361314885" className="hover:text-indigo-600 transition-colors flex items-center justify-center gap-2">
                   <i className="fas fa-phone opacity-50"></i>
                   6361314885
+                </a>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800">
+              <div className="w-12 h-12 bg-blue-600/10 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                <i className="fas fa-user-tie text-xl"></i>
+              </div>
+              <p className="text-sm font-black uppercase tracking-widest text-blue-600 dark:text-blue-400">YASHWANTH H M</p>
+              <div className="flex flex-col gap-2 text-sm font-bold text-slate-600 dark:text-slate-400">
+                <a href="mailto:yashwanth.32997@gmail.com" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-envelope opacity-50"></i>
+                  yashwanth.32997@gmail.com
+                </a>
+                <a href="tel:8618032997" className="hover:text-blue-600 transition-colors flex items-center justify-center gap-2">
+                  <i className="fas fa-phone opacity-50"></i>
+                  8618032997
                 </a>
               </div>
             </div>

@@ -18,6 +18,77 @@ const getLanguageInstruction = (lang: Language) => {
   return instructions[lang] || instructions.en;
 };
 
+export const analyzeHealthImage = async (image: string, lang: Language = 'en'): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: {
+      parts: [
+        { inlineData: { data: image.split(',')[1], mimeType: 'image/jpeg' } },
+        { text: `Analyze this medical image in extreme detail. Provide a comprehensive clinical explanation using deep reasoning. ${getLanguageInstruction(lang)}` }
+      ]
+    },
+    config: {
+      thinkingConfig: { thinkingBudget: 16384 }
+    }
+  });
+  return response.text || "No analysis could be generated.";
+};
+
+export const getDeepReasoning = async (query: string, lang: Language = 'en'): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-preview',
+    contents: query,
+    config: {
+      thinkingConfig: { thinkingBudget: 16384 },
+      systemInstruction: `You are a world-class clinical expert. Provide highly detailed, deep reasoning. ${getLanguageInstruction(lang)}`
+    }
+  });
+  return response.text || "No reasoning could be generated.";
+};
+
+export const generatePillVisual = async (prompt: string, aspectRatio: string = '1:1', imageSize: string = '1K'): Promise<string> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-pro-image-preview',
+    contents: {
+      parts: [
+        { text: `A crisp, photorealistic clinical photograph of a medication pill. Description: ${prompt}` }
+      ]
+    },
+    config: {
+      imageConfig: {
+        aspectRatio: aspectRatio as any,
+        imageSize: imageSize as any
+      }
+    }
+  });
+  
+  for (const part of response.candidates[0].content.parts) {
+    if (part.inlineData) {
+      return `data:image/png;base64,${part.inlineData.data}`;
+    }
+  }
+  throw new Error("Failed to generate visual.");
+};
+
+export const getMedicineRates = async (medicines: TabletData[], lang: Language = 'en'): Promise<{ text: string, sources: any[] }> => {
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const medList = medicines.map(m => m.name).join(', ');
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Find market rates and generic alternatives for: ${medList}. ${getLanguageInstruction(lang)}`,
+    config: {
+      tools: [{ googleSearch: {} }]
+    }
+  });
+  return { 
+    text: response.text || "Market rate data unavailable.", 
+    sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] 
+  };
+};
+
 export const analyzeMedicalReports = async (
   base64Data: string, 
   mimeType: string,
@@ -26,15 +97,17 @@ export const analyzeMedicalReports = async (
 ): Promise<ReportAnalysis> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
-    ROLE: You are a Senior Clinical Pathologist and Patient Educator.
-    TASK: Analyze the provided medical report with 100% accuracy.
-    PATIENT PROFILE: ${JSON.stringify(profile)}
+    ROLE: Senior Clinical Pathologist.
+    TASK: Analyze the medical report.
+    PATIENT: ${JSON.stringify(profile)}
+    FORMAT: Group findings into "High", "Low", and "Normal".
+    Explain findings simply for someone without a medical degree.
     ${getLanguageInstruction(lang)}
-    CRITICAL: Output ONLY valid JSON.
+    Output valid JSON only.
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview", // Switched to Flash for maximum speed
     contents: {
       parts: [
         { inlineData: { data: base64Data.split(',')[1], mimeType: mimeType } },
@@ -42,7 +115,6 @@ export const analyzeMedicalReports = async (
       ]
     },
     config: {
-      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -130,7 +202,7 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
     contents: {
       parts: [
         { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
-        { text: `Identify this medication pill from the photo. Pay special attention to the imprint. Include dosage and frequency if identifiable from the pill characteristics, generic name, uses, side effects and warnings. ${getLanguageInstruction(lang)}` }
+        { text: `Identify this medication pill from the photo. ${getLanguageInstruction(lang)}` }
       ]
     },
     config: {
@@ -158,62 +230,39 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
   return { ...data, imageUrl: imageBase64, confidence: data.confidence || 0.9 };
 };
 
-export const getMedicineRates = async (tablets: TabletData[], lang: Language = 'en'): Promise<{ text: string, sources: any[] }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const medicineNames = tablets.map(t => t.name).join(', ');
-  const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: `Find market prices for: ${medicineNames}. ${getLanguageInstruction(lang)}`,
-    config: { tools: [{ googleSearch: {} }] }
-  });
-  return { text: response.text || "", sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] };
-};
-
 export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData, t: TabletData[], l: Language = 'en'): Promise<VerificationResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
-    CLINICAL SAFETY AUDIT: Compare identified physical tablets against prescription orders.
+    CLINICAL AUDIT: Cross-reference identified pills against prescription orders.
     
     PATIENT PROFILE: ${JSON.stringify(p)}
     PRESCRIPTION: ${JSON.stringify(pr)}
-    IDENTIFIED PILLS: ${JSON.stringify(t.map(({name, color, shape, imprint, dosage, frequency}) => ({name, color, shape, imprint, dosage, frequency})))}
+    IDENTIFIED PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint})))}
 
-    TASK: Perform a nuanced matching algorithm based on these parameters:
-    
-    1. CATEGORICAL SCORING (0.0 to 1.0):
-       - identityScore: Name and chemical class match.
-       - posologyScore: Precise dosage strength match. Flag minor discrepancies (e.g., 500mg prescribed vs 650mg identified).
-       - chronologyScore: Frequency match (e.g., twice daily vs once daily).
+    NUANCED SCORING SYSTEM (0.0 to 1.0):
+    1. identityScore: 1.0 for same generic/brand, 0.5 for same class but different drug, 0.0 for mismatch.
+    2. posologyScore: 1.0 for exact dosage match, 0.5 for half/double dose, 0.0 for dangerous variance.
+    3. chronologyScore: 1.0 for matching frequency (e.g. BD/TDS), 0.0 for mismatch.
 
-    2. PHARMACEUTICAL COLOR AUDIT:
-       - Verify if the identified pill's color/shape matches the typical pharmacological profile for the prescribed drug and dosage.
-       - If the color is significantly different (e.g., red pill identified for a drug normally sold as white tablets), set 'colorContrastWarning' with a clear explanation of why this is suspicious.
-
-    3. NUANCED SEVERITY LOGIC:
-       - CRITICAL: Identity mismatch OR posology deviation > 100% (e.g., 50mg prescribed, 150mg identified) OR allergy found.
-       - MAJOR_WARNING: Posology deviation 20-100% OR chronology deviation (e.g., daily prescribed, identified pill is for 'as needed') OR serious color/imprint discrepancy.
-       - WARNING: Minor visual contrast issues OR minor posology naming discrepancies.
-       - INFO: General instructions (e.g., "take with food").
-
-    4. DRUG AUDIT:
-       - Check if identified pills contains allergens in ${p.allergies.join(', ')}.
-       - Identify interactions with ${p.currentMedications.join(', ')}.
-       - List 'uses', 'sideEffects', and 'specialWarnings' specifically tailored to the patient's existing 'medicalConditions'.
+    SEVERITY LEVELS:
+    - CRITICAL: Life-threatening mismatch (e.g. Heart meds vs Pain meds).
+    - MAJOR_WARNING: Significant dosage or frequency error.
+    - WARNING: Minor naming confusion or brand variation.
+    - INFO: Helpful clinical context.
 
     ${getLanguageInstruction(l)}
-    Output JSON following the schema.
+    Output ONLY valid JSON.
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: "gemini-3-flash-preview", // Using Flash for verification as well for speed
     contents: prompt,
     config: {
-      thinkingConfig: { thinkingBudget: 32768 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          status: { type: Type.STRING, description: "PERFECT_MATCH, PARTIAL_MATCH, NO_MATCH" },
+          status: { type: Type.STRING },
           matchScore: { type: Type.NUMBER },
           identifiedTablets: {
             type: Type.ARRAY,
@@ -222,7 +271,7 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
               properties: {
                 name: { type: Type.STRING },
                 isMatch: { type: Type.BOOLEAN },
-                matchStatus: { type: Type.STRING, description: "PERFECT, PARTIAL, MISMATCH, UNKNOWN" },
+                matchStatus: { type: Type.STRING },
                 identityScore: { type: Type.NUMBER },
                 posologyScore: { type: Type.NUMBER },
                 chronologyScore: { type: Type.NUMBER },
@@ -235,20 +284,12 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
               }
             }
           },
-          matchStats: {
-            type: Type.OBJECT,
-            properties: {
-              matchedCount: { type: Type.INTEGER },
-              unmatchedCount: { type: Type.INTEGER },
-              totalPrescribed: { type: Type.INTEGER }
-            }
-          },
           alerts: {
             type: Type.ARRAY,
             items: {
               type: Type.OBJECT,
               properties: {
-                type: { type: Type.STRING, description: "CRITICAL, MAJOR_WARNING, WARNING, INFO" },
+                type: { type: Type.STRING },
                 title: { type: Type.STRING },
                 description: { type: Type.STRING }
               }
@@ -258,57 +299,33 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
       }
     }
   });
+  
   const analysis = JSON.parse(response.text || '{}');
-  const finalTablets = t.map((orig, i) => ({ ...orig, ...(analysis.identifiedTablets || [])[i] }));
-  return { id: crypto.randomUUID(), timestamp: new Date().toISOString(), prescription: pr, identifiedTablets: finalTablets, ...analysis };
+  const finalTablets = t.map((orig, i) => ({ 
+    ...orig, 
+    ...(analysis.identifiedTablets || [])[i] 
+  }));
+
+  return { 
+    id: crypto.randomUUID(), 
+    timestamp: new Date().toISOString(), 
+    prescription: pr, 
+    identifiedTablets: finalTablets,
+    matchStats: {
+      matchedCount: finalTablets.filter(t => t.isMatch).length,
+      unmatchedCount: finalTablets.filter(t => !t.isMatch).length,
+      totalPrescribed: pr.medicines.length
+    },
+    ...analysis 
+  };
 };
 
 export const getHealthSearch = async (query: string, lang: Language = 'en'): Promise<{ text: string, sources: any[] }> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
+    model: 'gemini-3-flash-preview',
     contents: query,
-    config: { tools: [{ googleSearch: {} }], thinkingConfig: { thinkingBudget: 32768 } }
+    config: { tools: [{ googleSearch: {} }] }
   });
   return { text: response.text || "", sources: response.candidates?.[0]?.groundingMetadata?.groundingChunks || [] };
-};
-
-export const getQuickSummary = async (text: string, lang: Language = 'en'): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-flash-lite-latest',
-    contents: `Summary: ${text}. ${getLanguageInstruction(lang)}`,
-  });
-  return response.text || "";
-};
-
-export const analyzeHealthImage = async (imageBase64: string, lang: Language = 'en'): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: { parts: [{ inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } }, { text: `Describe health image simply. ${getLanguageInstruction(lang)}` }] },
-    config: { thinkingConfig: { thinkingBudget: 32768 } }
-  });
-  return response.text || "";
-};
-
-export const getDeepReasoning = async (query: string, lang: Language = 'en'): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: query,
-    config: { thinkingConfig: { thinkingBudget: 32768 } }
-  });
-  return response.text || "";
-};
-
-export const generatePillVisual = async (prompt: string, aspectRatio: string = "1:1", imageSize: string = "1K"): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
-    contents: { parts: [{ text: `A clear medical photo of a pill: ${prompt}` }] },
-    config: { imageConfig: { aspectRatio: aspectRatio as any, imageSize: imageSize as any } }
-  });
-  for (const part of response.candidates?.[0]?.content?.parts || []) { if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`; }
-  throw new Error("Generation failed");
 };

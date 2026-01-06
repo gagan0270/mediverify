@@ -11,16 +11,16 @@ const SectionHeader: React.FC<{ title: string; subtitle: string; icon: string; t
     red: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-100 dark:border-red-900/30',
     indigo: 'bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 border-indigo-100 dark:border-indigo-900/30',
     green: 'bg-green-50 dark:bg-green-950/30 text-green-600 dark:text-green-400 border-green-100 dark:border-green-900/30',
-    blue: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30'
+    blue: 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-100 dark:border-blue-900/30'
   };
   return (
-    <div className={`p-8 rounded-[3rem] border ${colors[theme]} flex flex-col sm:flex-row items-center gap-6 mb-10 shadow-sm transition-colors`}>
-      <div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-3xl bg-white dark:bg-slate-800 shadow-xl border border-slate-100 dark:border-slate-700`}>
+    <div className={`p-6 md:p-8 rounded-[2rem] md:rounded-[3rem] border ${colors[theme]} flex flex-col sm:flex-row items-center gap-4 md:gap-6 mb-6 md:mb-10 shadow-sm transition-colors`}>
+      <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl md:rounded-3xl flex items-center justify-center text-xl md:text-3xl bg-white dark:bg-slate-800 shadow-xl border border-slate-100 dark:border-slate-700 shrink-0`}>
         <i className={`fas ${icon}`}></i>
       </div>
-      <div className="text-center sm:text-left">
-        <h3 className="text-3xl font-black tracking-tight leading-none mb-2">{title}</h3>
-        <p className="text-[11px] font-bold uppercase tracking-[0.3em] opacity-70">{subtitle}</p>
+      <div className="text-center sm:text-left overflow-hidden w-full">
+        <h3 className="text-xl md:text-2xl lg:text-3xl font-black tracking-tight leading-tight mb-1 truncate md:whitespace-normal">{title}</h3>
+        <p className="text-[9px] md:text-[11px] font-bold uppercase tracking-[0.15em] md:tracking-[0.25em] opacity-70 leading-tight break-words">{subtitle}</p>
       </div>
     </div>
   );
@@ -36,54 +36,55 @@ const ClinicalDataTable: React.FC<{ items: ReportComponent[]; title: string; sta
   };
 
   return (
-    <div className="overflow-hidden border border-slate-100 dark:border-slate-800 rounded-[3.5rem] bg-white dark:bg-slate-900 shadow-2xl shadow-slate-200/50 dark:shadow-none mb-12 transition-all">
-      <div className={`px-10 py-6 ${headerColors[statusType]} flex justify-between items-center`}>
-         <div className="flex items-center gap-4">
-            <i className={`fas ${statusType === 'DANGER' ? 'fa-skull-crossbones' : statusType === 'WARNING' ? 'fa-circle-exclamation' : 'fa-circle-check'} text-2xl opacity-70`}></i>
-            <span className="font-black text-lg uppercase tracking-widest">{title}</span>
+    <div className="overflow-hidden border border-slate-100 dark:border-slate-800 rounded-[2rem] md:rounded-[2.5rem] bg-white dark:bg-slate-900 shadow-xl mb-12 transition-all">
+      <div className={`px-6 md:px-8 py-4 md:py-6 ${headerColors[statusType]} flex flex-col sm:flex-row justify-between items-center gap-3`}>
+         <div className="flex items-center gap-3 md:gap-4">
+            <i className={`fas ${statusType === 'DANGER' ? 'fa-skull-crossbones' : statusType === 'WARNING' ? 'fa-circle-exclamation' : 'fa-circle-check'} text-lg md:text-2xl opacity-80`}></i>
+            <span className="font-black text-xs md:text-lg uppercase tracking-widest">{title}</span>
          </div>
-         <Badge color="white" className="bg-white/20 border-white/30 text-white px-5 py-1 text-sm">{items.length} Markers</Badge>
+         <Badge color="white" className="bg-white/20 border-white/30 text-white px-3 md:px-5 py-1 text-[10px] uppercase font-black">{items.length} Findings</Badge>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+      <div className="overflow-x-auto scrollbar-thin">
+        <table className="w-full text-left border-collapse table-fixed min-w-[800px]">
           <thead className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-100 dark:border-slate-800">
             <tr>
-              <th className="px-10 py-5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest min-w-[180px]">Biomarker</th>
-              <th className="px-10 py-5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest min-w-[120px]">Reading</th>
-              <th className="px-10 py-5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Description & Impact</th>
-              <th className="px-10 py-5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Risk Factor</th>
-              <th className="px-10 py-5 text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest">Recommended Action</th>
+              <th className="w-[20%] px-6 py-4 text-[9px] md:text-[10px] font-black uppercase text-slate-400 tracking-widest">Biomarker</th>
+              <th className="w-[15%] px-6 py-4 text-[9px] md:text-[10px] font-black uppercase text-slate-400 tracking-widest">Reading</th>
+              <th className="w-[25%] px-6 py-4 text-[9px] md:text-[10px] font-black uppercase text-slate-400 tracking-widest">Simplified Meaning</th>
+              <th className="w-[20%] px-6 py-4 text-[9px] md:text-[10px] font-black uppercase text-slate-400 tracking-widest">Disease Risk</th>
+              <th className="w-[20%] px-6 py-4 text-[9px] md:text-[10px] font-black uppercase text-slate-400 tracking-widest">Suggested Solution</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
             {items.map((item, i) => (
               <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
-                <td className="px-10 py-8 align-top">
-                   <div className="font-black text-slate-900 dark:text-slate-100 text-lg mb-1">{item.name}</div>
-                   <div className="text-[10px] text-slate-400 dark:text-slate-600 font-bold uppercase tracking-widest">Range: {item.range}</div>
+                <td className="px-6 py-6 align-top">
+                   <div className="font-black text-slate-900 dark:text-slate-100 text-lg mb-1 leading-tight">{item.name}</div>
+                   <div className="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Healthy Range: {item.range}</div>
                 </td>
-                <td className="px-10 py-8 align-top">
-                   <Badge 
-                    color={statusType === 'DANGER' ? 'red' : statusType === 'WARNING' ? 'yellow' : 'green'} 
-                    className="text-xl font-black px-5 py-2 rounded-2xl"
-                   >
+                <td className="px-6 py-6 align-top">
+                   <div className={`inline-block px-4 py-2 rounded-2xl text-lg font-black ${
+                     statusType === 'DANGER' ? 'bg-red-100 text-red-700' : 
+                     statusType === 'WARNING' ? 'bg-amber-100 text-amber-700' : 
+                     'bg-emerald-100 text-emerald-700'
+                   }`}>
                     {item.value}
-                   </Badge>
+                   </div>
                 </td>
-                <td className="px-10 py-8 align-top">
-                   <p className="text-sm font-bold text-slate-600 dark:text-slate-300 leading-relaxed italic max-w-xs">
+                <td className="px-6 py-6 align-top">
+                   <p className="text-xs md:text-sm font-bold text-slate-600 dark:text-slate-300 leading-relaxed italic break-words">
                      "{item.problemSimplified}"
                    </p>
                 </td>
-                <td className="px-10 py-8 align-top">
-                   <div className="flex items-center gap-2 text-red-500 dark:text-red-400 font-black text-xs uppercase tracking-tight">
-                      <i className="fas fa-triangle-exclamation"></i>
-                      {item.majorDiseaseRisk || 'No acute risk detected'}
+                <td className="px-6 py-6 align-top">
+                   <div className="flex items-start gap-2 text-red-500 font-black text-[10px] uppercase tracking-tight leading-tight break-words">
+                      <i className="fas fa-triangle-exclamation mt-0.5 shrink-0"></i>
+                      <span>{item.majorDiseaseRisk || 'Minimal risk detected'}</span>
                    </div>
                 </td>
-                <td className="px-10 py-8 align-top">
-                   <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50 text-xs font-bold text-blue-700 dark:text-blue-300 max-w-xs leading-relaxed">
-                      {item.suggestedSolution || 'Maintain current healthy lifestyle'}
+                <td className="px-6 py-6 align-top">
+                   <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-2xl border border-blue-100 dark:border-blue-800/50 text-xs font-bold text-blue-700 dark:text-blue-300 leading-relaxed break-words">
+                      {item.suggestedSolution || 'Continue monitoring readings'}
                    </div>
                 </td>
               </tr>
@@ -107,22 +108,25 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+    
     setLoading(true);
+    setLoadingMsg(`AI Turbo Scanning ${files.length} Report${files.length > 1 ? 's' : ''}...`);
+
     try {
-      const temp: ReportAnalysis[] = [];
-      for (let i = 0; i < files.length; i++) {
-        setLoadingMsg(`Deep Clinical Extraction: ${i + 1}/${files.length}...`);
+      // Parallel processing using Promise.all to maximize speed
+      const analysisPromises = Array.from(files).map(async (file) => {
         const base64 = await new Promise<string>(r => {
           const reader = new FileReader();
           reader.onload = () => r(reader.result as string);
-          reader.readAsDataURL(files[i]);
+          reader.readAsDataURL(file);
         });
-        const res = await analyzeMedicalReports(base64, files[i].type || 'application/pdf', user, language);
-        temp.push(res);
-      }
-      setResults(temp);
+        return analyzeMedicalReports(base64, file.type || 'application/pdf', user, language);
+      });
+
+      const processedResults = await Promise.all(analysisPromises);
+      setResults(processedResults);
     } catch (err) { 
-      alert("Scan failed. Ensure report is flat, well-lit, and text is readable."); 
+      alert("Scan failed. Ensure report is clear."); 
     } finally { 
       setLoading(false); 
     }
@@ -130,22 +134,11 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-32 space-y-12 animate-in fade-in max-w-3xl mx-auto px-6">
-        <div className="relative">
-          <div className="w-56 h-56 border-[16px] border-slate-100 dark:border-slate-800 rounded-[5rem] animate-pulse"></div>
-          <div className="absolute inset-0 flex items-center justify-center flex-col gap-4">
-             <i className="fas fa-microscope text-indigo-600 dark:text-indigo-400 text-7xl animate-bounce"></i>
-             <div className="w-16 h-2 bg-indigo-100 dark:bg-indigo-900 rounded-full"></div>
-          </div>
-        </div>
-        <div className="text-center space-y-6">
-           <h2 className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-tight">{loadingMsg}</h2>
-           <div className="flex flex-wrap items-center justify-center gap-3">
-              <Badge color="blue" className="animate-pulse px-4 py-1">Gemini 3 Pro Reasoning</Badge>
-              <Badge color="green" className="px-4 py-1">Biomarker Logic Active</Badge>
-              <Badge color="red" className="px-4 py-1">Clinical Audit Mode</Badge>
-           </div>
-           <p className="text-slate-400 dark:text-slate-500 font-black uppercase tracking-[0.4em] text-xs">Matching findings against international clinical standards</p>
+      <div className="flex flex-col items-center justify-center py-24 space-y-12 animate-in fade-in max-w-3xl mx-auto px-6">
+        <div className="w-24 h-24 border-8 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"></div>
+        <div className="text-center space-y-2">
+           <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white tracking-tighter leading-tight">{loadingMsg}</h2>
+           <p className="text-slate-400 dark:text-slate-500 font-black uppercase tracking-[0.3em] text-xs">Utilizing Gemini Flash for Instant Extraction</p>
         </div>
       </div>
     );
@@ -154,78 +147,87 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
   if (results.length > 0) {
     const r = results[activeIdx];
     return (
-      <div className="max-w-7xl mx-auto space-y-20 pb-32 px-4 font-sans animate-in zoom-in-95 duration-1000">
+      <div className="max-w-7xl mx-auto space-y-16 lg:space-y-24 pb-24 px-4 font-sans animate-in zoom-in-95 duration-1000">
         
-        {/* COMPARTMENT 1: EXECUTIVE INTELLIGENCE SUMMARY */}
-        <div className={`p-16 md:p-24 rounded-[5rem] text-center shadow-2xl text-white relative overflow-hidden transition-all transform hover:scale-[1.01] duration-700 ${
+        <div className={`p-12 md:p-24 rounded-[4rem] text-center shadow-2xl text-white relative overflow-hidden ${
           r.severity === 'DANGER' ? 'bg-gradient-to-br from-red-600 to-red-800' : r.severity === 'WARNING' ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-emerald-600 to-teal-800'
         }`}>
-           <div className="absolute top-0 right-0 p-24 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
-             <i className="fas fa-file-waveform text-[250px]"></i>
+           <div className="absolute top-0 right-0 p-12 md:p-24 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
+             <i className="fas fa-bolt text-[200px] md:text-[350px]"></i>
            </div>
-           <div className="relative z-10 space-y-10">
-              <div className="w-28 h-28 bg-white/20 rounded-[2.5rem] mx-auto flex items-center justify-center text-6xl backdrop-blur-xl border border-white/30 shadow-2xl">
-                 <i className={`fas ${r.severity === 'DANGER' ? 'fa-triangle-exclamation' : 'fa-shield-heart'}`}></i>
+           <div className="relative z-10 space-y-12">
+              {results.length > 1 && (
+                <div className="flex justify-center gap-2 mb-4">
+                  {results.map((_, i) => (
+                    <button 
+                      key={i} 
+                      onClick={() => setActiveIdx(i)}
+                      className={`w-3 h-3 rounded-full transition-all ${activeIdx === i ? 'bg-white scale-125' : 'bg-white/30 hover:bg-white/50'}`}
+                    />
+                  ))}
+                </div>
+              )}
+              <div className="w-20 h-20 md:w-32 md:h-32 bg-white/20 rounded-[2.5rem] mx-auto flex items-center justify-center text-4xl md:text-6xl backdrop-blur-xl border border-white/30 shadow-2xl">
+                 <i className={`fas ${r.severity === 'DANGER' ? 'fa-biohazard' : 'fa-check-double'}`}></i>
               </div>
-              <div className="space-y-4">
-                 <p className="text-[14px] font-black uppercase tracking-[0.5em] opacity-80">Final Clinical Assessment</p>
-                 <h2 className="text-6xl md:text-8xl font-black tracking-tighter leading-none mb-6 drop-shadow-lg">{r.overallHealthGrade}</h2>
+              <div>
+                 <p className="text-xs md:text-lg font-black uppercase tracking-[0.5em] opacity-80 mb-4">Turbo Health Assessment</p>
+                 <h2 className="text-5xl md:text-9xl font-black tracking-tighter leading-none mb-8 drop-shadow-lg break-words px-4">
+                    {r.overallHealthGrade}
+                 </h2>
               </div>
-              <div className="max-w-4xl mx-auto p-10 bg-black/10 backdrop-blur-md rounded-[3rem] border border-white/20 shadow-inner">
-                 <p className="text-2xl md:text-3xl font-bold opacity-100 leading-relaxed italic text-white drop-shadow-sm">
+              <div className="max-w-4xl mx-auto p-8 md:p-12 bg-black/10 backdrop-blur-md rounded-[3rem] border border-white/20 shadow-inner">
+                 <p className="text-xl md:text-3xl font-bold leading-relaxed italic text-white/95">
                    "{r.simpleSummary}"
                  </p>
               </div>
            </div>
         </div>
 
-        {/* COMPARTMENT 2: CRITICAL & HIGH ABNORMALITIES */}
         <section>
           <SectionHeader 
-            title="Biomarker Intelligence Audit" 
-            subtitle="Deep tabular breakdown of markers outside healthy range" 
+            title="Biomarker Analysis" 
+            subtitle="Extracted markers compared to healthy norms" 
             icon="fa-flask-vial" 
             theme="red"
           />
-          <ClinicalDataTable 
-            items={r.highFindings || []} 
-            title="HIGH VALUE ALERT" 
-            statusType="DANGER" 
-          />
-          <ClinicalDataTable 
-            items={r.lowFindings || []} 
-            title="LOW VALUE ALERT" 
-            statusType="WARNING" 
-          />
           
-          {(!r.highFindings?.length && !r.lowFindings?.length) && (
-            <div className="p-24 bg-emerald-50 dark:bg-emerald-900/20 rounded-[4rem] border border-emerald-100 dark:border-emerald-800/30 text-center shadow-2xl">
-               <i className="fas fa-heart-pulse text-8xl text-emerald-500 mb-8 animate-pulse"></i>
-               <h3 className="text-4xl font-black text-emerald-700 dark:text-emerald-400 tracking-tight">Clinical Optimization Detected</h3>
-               <p className="text-emerald-600 dark:text-emerald-500/70 font-bold opacity-70 mt-4 text-xl">All biomarkers analyzed within this report reside in the optimal pharmacological range.</p>
-            </div>
-          )}
+          <div className="space-y-12">
+            <ClinicalDataTable 
+              items={r.highFindings || []} 
+              title="Compartment: Elevated Findings (High)" 
+              statusType="DANGER" 
+            />
+            
+            <ClinicalDataTable 
+              items={r.lowFindings || []} 
+              title="Compartment: Deficient Findings (Low)" 
+              statusType="WARNING" 
+            />
+            
+            <ClinicalDataTable 
+              items={r.normalFindings || []} 
+              title="Compartment: Optimal Findings (Normal)" 
+              statusType="SUCCESS" 
+            />
+          </div>
         </section>
 
-        {/* COMPARTMENT 3: PATHOLOGY RISK MAPPING */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
           <div className="lg:col-span-7 space-y-8">
             <SectionHeader 
-              title="Risk Profile Mapping" 
-              subtitle="Major illnesses statistically linked to these specific markers" 
+              title="Disease Risk Profile" 
+              subtitle="Potential conditions associated with your markers" 
               icon="fa-dna" 
               theme="indigo"
             />
             <div className="grid grid-cols-1 gap-6">
                {r.top3Risks?.map((risk, i) => (
-                 <Card key={i} className="p-10 rounded-[3rem] border-none shadow-2xl bg-slate-900 dark:bg-slate-800 text-white relative overflow-hidden group hover:-translate-y-2 transition-all cursor-default">
-                    <div className="absolute inset-0 bg-indigo-600 opacity-0 group-hover:opacity-10 transition-opacity"></div>
-                    <div className="flex items-center gap-8 relative z-10">
-                       <span className="text-5xl font-black text-indigo-500 opacity-40">0{i+1}</span>
-                       <div>
-                          <p className="text-2xl font-black tracking-tight leading-tight mb-2">{risk}</p>
-                          <Badge color="blue" className="bg-indigo-500/20 text-indigo-400 border-none font-black text-[10px] uppercase">Pathological Correlation</Badge>
-                       </div>
+                 <Card key={i} className="p-8 md:p-10 rounded-[2.5rem] border-none shadow-2xl bg-slate-900 text-white flex items-center gap-8 group transition-all transform hover:scale-[1.02]">
+                    <span className="text-4xl font-black text-indigo-500 opacity-30 shrink-0">0{i+1}</span>
+                    <div className="overflow-hidden">
+                       <p className="text-xl md:text-2xl font-black tracking-tight leading-tight break-words">{risk}</p>
+                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mt-2">Clinical Warning</p>
                     </div>
                  </Card>
                ))}
@@ -234,45 +236,30 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
 
           <div className="lg:col-span-5 space-y-8">
             <SectionHeader 
-              title="Clinical Action Plan" 
-              subtitle="Precise steps to normalize your biomarker profile" 
-              icon="fa-clipboard-list" 
+              title="Action Plan" 
+              subtitle="Simple steps to normalize your profile" 
+              icon="fa-list-check" 
               theme="green"
             />
             <div className="space-y-6">
                {r.immediateSteps?.map((step, i) => (
-                 <div key={i} className="p-8 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[3rem] shadow-xl flex items-start gap-6 transition-all hover:scale-[1.02] hover:shadow-2xl">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black text-xl shadow-lg shadow-emerald-500/30">
+                 <div key={i} className="p-6 md:p-8 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2.5rem] shadow-xl flex items-start gap-6 transition-all hover:bg-slate-50">
+                    <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shrink-0 font-black text-xl shadow-lg">
                        {i+1}
                     </div>
-                    <p className="font-bold text-slate-700 dark:text-slate-300 leading-relaxed text-base pt-1">{step}</p>
+                    <p className="font-bold text-slate-700 dark:text-slate-300 leading-relaxed text-sm md:text-base pt-1">{step}</p>
                  </div>
                ))}
             </div>
           </div>
         </div>
 
-        {/* COMPARTMENT 4: OPTIMAL MARKER REPOSITORY */}
-        <section className="pt-16 border-t border-slate-200 dark:border-slate-800">
-           <SectionHeader 
-            title="Healthy Biomarkers" 
-            subtitle="Verified clinical markers within safety thresholds" 
-            icon="fa-shield-check" 
-            theme="blue"
-          />
-          <ClinicalDataTable 
-            items={r.normalFindings || []} 
-            title="NORMAL RANGE VERIFIED" 
-            statusType="SUCCESS" 
-          />
-        </section>
-
-        <div className="flex flex-col md:flex-row gap-8 max-w-3xl mx-auto pt-10">
-           <Button variant="ghost" className="flex-1 h-20 text-lg font-black text-slate-400 dark:text-slate-500 rounded-[2.5rem] border-2 border-dashed border-slate-200 dark:border-slate-800" onClick={() => setResults([])}>
-              <i className="fas fa-redo-alt mr-3"></i> Scan Another Report
+        <div className="flex flex-col sm:flex-row gap-8 max-w-3xl mx-auto pt-10">
+           <Button variant="ghost" className="flex-1 h-20 text-lg font-black text-slate-400 rounded-[2.5rem] border-2 border-dashed border-slate-200" onClick={() => { setResults([]); setActiveIdx(0); }}>
+              <i className="fas fa-undo mr-3"></i> Analyze New
            </Button>
-           <Button className="flex-[2] h-20 text-2xl rounded-[2.5rem] bg-slate-900 dark:bg-white dark:text-slate-900 text-white font-black shadow-2xl shadow-slate-900/40 transform hover:scale-105 transition-transform" onClick={() => navigate('/')}>
-              <i className="fas fa-house-user mr-3"></i> Back to Dashboard
+           <Button className="flex-[2] h-20 text-2xl rounded-[2.5rem] bg-slate-900 text-white font-black shadow-2xl" onClick={() => navigate('/')}>
+              <i className="fas fa-house-user mr-3"></i> Home Dashboard
            </Button>
         </div>
       </div>
@@ -280,48 +267,30 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
   }
 
   return (
-    <div className="max-w-4xl mx-auto space-y-20 py-12 px-4 animate-in fade-in duration-1000">
-      <div className="text-center space-y-8">
-         <div className="w-36 h-36 bg-indigo-600 dark:bg-indigo-500 rounded-[4rem] mx-auto flex items-center justify-center text-white text-6xl shadow-2xl shadow-indigo-600/30 transform hover:rotate-12 transition-transform cursor-pointer group">
-            <i className="fas fa-file-medical group-hover:scale-110 transition-transform"></i>
+    <div className="max-w-4xl mx-auto space-y-16 py-12 px-4 animate-in fade-in duration-1000">
+      <div className="text-center space-y-6">
+         <div className="w-24 h-24 md:w-36 md:h-36 bg-indigo-600 rounded-[3rem] md:rounded-[4rem] mx-auto flex items-center justify-center text-white text-4xl md:text-6xl shadow-2xl shadow-indigo-600/30">
+            <i className="fas fa-bolt"></i>
          </div>
          <div className="space-y-4">
-            <h1 className="text-6xl md:text-8xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">Report Intelligence</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-2xl font-medium max-w-3xl mx-auto leading-relaxed">Structured clinical audit for lab tests and blood work. Professional reasoning translated for patients.</p>
+            <h1 className="text-4xl md:text-7xl font-black text-slate-900 dark:text-white tracking-tighter leading-none">Instant Analysis</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-xl md:text-2xl font-medium max-w-3xl mx-auto leading-relaxed">Turbo-charged medical extraction. Upload multiple reports and get instant insights in seconds.</p>
          </div>
       </div>
 
-      <Card className="rounded-[5rem] p-12 md:p-24 text-center border-none shadow-2xl bg-white dark:bg-slate-900 group hover:shadow-indigo-500/20 transition-all cursor-pointer relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
+      <Card className="rounded-[3rem] md:rounded-[5rem] p-12 md:p-24 text-center border-none shadow-2xl bg-white dark:bg-slate-900 group hover:shadow-indigo-500/20 transition-all cursor-pointer relative overflow-hidden" onClick={() => fileInputRef.current?.click()}>
          <div className="absolute inset-0 bg-indigo-50/10 dark:bg-indigo-900/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
          <div className="relative z-10 space-y-10">
-            <div className="w-28 h-28 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-[2.5rem] mx-auto flex items-center justify-center text-5xl group-hover:scale-110 transition-transform shadow-inner">
-               <i className="fas fa-file-upload"></i>
+            <div className="w-20 h-20 md:w-28 md:h-28 bg-indigo-50 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-[2.5rem] mx-auto flex items-center justify-center text-4xl md:text-5xl group-hover:scale-110 transition-transform">
+               <i className="fas fa-bolt"></i>
             </div>
             <div className="space-y-3">
-               <h3 className="text-5xl font-black text-slate-900 dark:text-white">Upload Lab Results</h3>
-               <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.4em] text-sm">PDF • IMAGE (Supports Multi-page Blood Panels)</p>
+               <h3 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white">Turbo Upload</h3>
+               <p className="text-slate-400 dark:text-slate-500 font-bold uppercase tracking-[0.4em] text-xs">PDF • IMAGES (Multiple Files Welcome)</p>
             </div>
          </div>
          <input type="file" multiple accept=".pdf,image/*" className="hidden" ref={fileInputRef} onChange={handleUpload} />
       </Card>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-         {[
-           { i: 'fa-microscope', t: 'Clinical Context', d: 'Extracts exact biomarkers and compares to norms' },
-           { i: 'fa-table-cells', t: 'Structured Data', d: 'Converts messy PDFs into clear, actionable tables' },
-           { i: 'fa-user-doctor', t: 'Med-Audit', d: 'Deep reasoning for next steps and pathological risks' }
-         ].map((item, i) => (
-           <div key={i} className="p-10 bg-slate-50 dark:bg-slate-900 rounded-[3.5rem] border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center gap-6 transition-all hover:-translate-y-3 hover:shadow-xl">
-              <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 shadow-md border border-slate-50 dark:border-slate-700">
-                 <i className={`fas ${item.i} text-2xl`}></i>
-              </div>
-              <div className="space-y-2">
-                <p className="font-black text-slate-900 dark:text-white tracking-tight text-2xl">{item.t}</p>
-                <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 leading-relaxed uppercase tracking-widest">{item.d}</p>
-              </div>
-           </div>
-         ))}
-      </div>
     </div>
   );
 };
