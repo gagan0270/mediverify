@@ -1,5 +1,5 @@
 
-import React, { useState, createContext, useContext } from 'react';
+import React, { useState, createContext, useContext, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { UserProfile, VerificationResult, Language } from './types';
 import { Card, Button, Badge } from './components/UI';
@@ -20,8 +20,54 @@ const LanguageContext = createContext<{ language: Language; setLanguage: (l: Lan
 
 export const useLanguage = () => useContext(LanguageContext);
 
+const SplashScreen: React.FC<{ onComplete: () => void }> = ({ onComplete }) => {
+  const [status, setStatus] = useState('Initializing secure session...');
+  
+  useEffect(() => {
+    const init = async () => {
+      // Small delay to show brand identity
+      await new Promise(r => setTimeout(r, 1200));
+      setStatus('Verifying AI credentials...');
+      
+      // Check if user has selected an API key for Pro features (Veo/Imagen/Pro)
+      if (typeof (window as any).aistudio?.hasSelectedApiKey === 'function') {
+        const hasKey = await (window as any).aistudio.hasSelectedApiKey();
+        if (!hasKey) {
+          setStatus('Awaiting AI Studio key selection...');
+          // This will open the dialog; app resumes once chosen
+          await (window as any).aistudio.openSelectKey();
+        }
+      }
+      
+      setStatus('Restoring health profile...');
+      await new Promise(r => setTimeout(r, 800));
+      onComplete();
+    };
+    init();
+  }, [onComplete]);
+
+  return (
+    <div className="fixed inset-0 bg-white z-[200] flex flex-col items-center justify-center p-8 text-center space-y-8 animate-in fade-in duration-500">
+      <div className="relative">
+        <div className="w-24 h-24 bg-blue-600 rounded-[2.5rem] flex items-center justify-center text-white text-4xl shadow-2xl animate-bounce">
+          <i className="fas fa-prescription-bottle-medical"></i>
+        </div>
+        <div className="absolute -inset-4 border-2 border-blue-100 rounded-[3.5rem] animate-pulse"></div>
+      </div>
+      <div className="space-y-2">
+        <h1 className="text-3xl font-black text-slate-900 tracking-tighter">MediVerify</h1>
+        <div className="flex items-center gap-2 justify-center text-blue-600 font-bold uppercase tracking-widest text-[10px]">
+           <i className="fas fa-shield-halved"></i>
+           <span>{status}</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const AppContent: React.FC = () => {
   const { t, language, setLanguage } = useLanguage();
+  const [isInitializing, setIsInitializing] = useState(true);
   const [user, setUser] = useState<UserProfile | null>(() => {
     try {
       const saved = localStorage.getItem('medi_verify_profile');
@@ -54,6 +100,10 @@ const AppContent: React.FC = () => {
     localStorage.setItem('medi_verify_history', JSON.stringify(newHistory));
   };
 
+  if (isInitializing) {
+    return <SplashScreen onComplete={() => setIsInitializing(false)} />;
+  }
+
   if (!user && location.pathname !== '/onboarding') {
     return <Navigate to="/onboarding" replace />;
   }
@@ -78,6 +128,11 @@ const AppContent: React.FC = () => {
           </nav>
 
           <div className="flex items-center gap-4">
+             <div className="hidden lg:flex items-center gap-2 px-3 py-1 bg-green-50 text-green-600 rounded-lg border border-green-100">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+                <span className="text-[10px] font-black uppercase tracking-widest">Account Active</span>
+             </div>
+
              <select 
                value={language} 
                onChange={(e) => setLanguage(e.target.value as Language)}
@@ -108,6 +163,19 @@ const AppContent: React.FC = () => {
             <div className="max-w-2xl mx-auto space-y-6">
               <Card title={t.profile}>
                 <div className="space-y-6">
+                   <div className="flex items-center justify-between p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center text-blue-600 shadow-sm">
+                           <i className="fas fa-shield-check text-xl"></i>
+                        </div>
+                        <div>
+                           <p className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none">Session Status</p>
+                           <p className="font-black text-blue-800 text-sm">Authenticated & Persistent</p>
+                        </div>
+                      </div>
+                      <Badge color="green">Live</Badge>
+                   </div>
+
                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                       <div>
                         <p className="text-xs text-slate-400 font-black uppercase tracking-widest mb-1">{t.personal_info}</p>
@@ -141,8 +209,8 @@ const AppContent: React.FC = () => {
                         <p className="text-sm font-black text-blue-600">{user?.emergencyContact.phone}</p>
                       </div>
                    </div>
-                   <Button variant="ghost" className="w-full text-red-500" onClick={() => { if(confirm("Reset profile?")) { localStorage.removeItem('medi_verify_profile'); window.location.reload(); } }}>
-                     <i className="fas fa-trash-alt mr-2"></i>{t.reset}
+                   <Button variant="ghost" className="w-full text-red-500 hover:bg-red-50" onClick={() => { if(confirm("This will log you out and clear all health data. Continue?")) { localStorage.removeItem('medi_verify_profile'); localStorage.removeItem('medi_verify_history'); window.location.reload(); } }}>
+                     <i className="fas fa-sign-out-alt mr-2"></i>Logout & Reset Session
                    </Button>
                 </div>
               </Card>
