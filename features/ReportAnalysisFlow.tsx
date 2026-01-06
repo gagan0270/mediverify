@@ -1,4 +1,3 @@
-
 import React, { useState, useRef } from 'react';
 import { UserProfile, ReportAnalysis, ReportComponent } from '../types';
 import { Card, Button, Badge } from '../components/UI';
@@ -114,12 +113,15 @@ const ReportAnalysisFlow: React.FC<{ user: UserProfile }> = ({ user }) => {
 
     try {
       // Parallel processing using Promise.all to maximize speed
-      const analysisPromises = Array.from(files).map(async (file) => {
+      // Explicitly typed (file: File) to ensure 'type' property is accessible and 'file' is treated as a Blob for readAsDataURL
+      const analysisPromises = Array.from(files).map(async (file: File) => {
         const base64 = await new Promise<string>(r => {
           const reader = new FileReader();
           reader.onload = () => r(reader.result as string);
+          // Fixed: readAsDataURL correctly receives a File (subclass of Blob)
           reader.readAsDataURL(file);
         });
+        // Fixed: Accessible 'file.type' property since 'file' is explicitly typed as 'File'
         return analyzeMedicalReports(base64, file.type || 'application/pdf', user, language);
       });
 

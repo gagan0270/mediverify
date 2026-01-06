@@ -13,7 +13,8 @@ const getLanguageInstruction = (lang: Language) => {
   const instructions = {
     en: "Respond in English.",
     hi: "Respond in Hindi (हिन्दी). Provide medical terms in English brackets where necessary.",
-    es: "Respond in Spanish (Español)."
+    es: "Respond in Spanish (Español).",
+    kn: "Respond in Kannada (ಕನ್ನಡ). Provide medical terms in English brackets where necessary for clarity."
   };
   return instructions[lang] || instructions.en;
 };
@@ -100,14 +101,14 @@ export const analyzeMedicalReports = async (
     ROLE: Senior Clinical Pathologist.
     TASK: Analyze the medical report.
     PATIENT: ${JSON.stringify(profile)}
-    FORMAT: Group findings into "High", "Low", and "Normal".
+    FORMAT: Group findings into "High", "Low", and "Normal" compartments.
     Explain findings simply for someone without a medical degree.
     ${getLanguageInstruction(lang)}
     Output valid JSON only.
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview", // Switched to Flash for maximum speed
+    model: "gemini-3-flash-preview",
     contents: {
       parts: [
         { inlineData: { data: base64Data.split(',')[1], mimeType: mimeType } },
@@ -165,7 +166,7 @@ export const analyzePrescription = async (imageBase64: string, lang: Language = 
     contents: {
       parts: [
         { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
-        { text: `Extract all medicine details accurately. ${getLanguageInstruction(lang)}` }
+        { text: `Extract all medicine details accurately. Focus on names and dosage clarity. ${getLanguageInstruction(lang)}` }
       ]
     },
     config: {
@@ -202,7 +203,7 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
     contents: {
       parts: [
         { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
-        { text: `Identify this medication pill from the photo. ${getLanguageInstruction(lang)}` }
+        { text: `Identify this medication pill from the photo. Provide generic name, uses, side effects and specific warnings. ${getLanguageInstruction(lang)}` }
       ]
     },
     config: {
@@ -233,31 +234,32 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
 export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData, t: TabletData[], l: Language = 'en'): Promise<VerificationResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
-    CLINICAL AUDIT: Cross-reference identified pills against prescription orders.
+    CLINICAL SAFETY AUDIT: Perform a rigorous cross-reference check between the prescribed medications and the physical tablet identified.
     
     PATIENT PROFILE: ${JSON.stringify(p)}
     PRESCRIPTION: ${JSON.stringify(pr)}
-    IDENTIFIED PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint})))}
+    IDENTIFIED PHYSICAL PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint, color: x.color})))}
 
-    NUANCED SCORING SYSTEM (0.0 to 1.0):
-    1. identityScore: 1.0 for same generic/brand, 0.5 for same class but different drug, 0.0 for mismatch.
-    2. posologyScore: 1.0 for exact dosage match, 0.5 for half/double dose, 0.0 for dangerous variance.
-    3. chronologyScore: 1.0 for matching frequency (e.g. BD/TDS), 0.0 for mismatch.
+    NUANCED CLINICAL SCORING (0.0 to 1.0):
+    1. identityScore: 1.0 for same chemical/brand, 0.8 for generic equivalent, 0.5 for same class but different drug, 0.0 for dangerous mismatch.
+    2. posologyScore: 1.0 for exact dosage match (e.g. 500mg vs 500mg), 0.6 for minor difference or half/double dose where manageable, 0.0 for dangerous variance.
+    3. chronologyScore: 1.0 for matching frequency (e.g. 1-0-1 vs BD), 0.7 for minor timing difference, 0.0 for critical frequency mismatch.
 
     SEVERITY LEVELS:
-    - CRITICAL: Life-threatening mismatch (e.g. Heart meds vs Pain meds).
-    - MAJOR_WARNING: Significant dosage or frequency error.
-    - WARNING: Minor naming confusion or brand variation.
-    - INFO: Helpful clinical context.
+    - CRITICAL: Life-threatening mismatch (e.g. cardiac med vs painkiller) or 10x dosage error.
+    - MAJOR_WARNING: Confirmed discrepancy in dosage strength or frequency that could cause adverse effects.
+    - WARNING: Substitution found (Generic vs Brand) or naming confusion without clinical danger.
+    - INFO: Verified match with helpful administration tips.
 
     ${getLanguageInstruction(l)}
     Output ONLY valid JSON.
   `;
 
   const response = await ai.models.generateContent({
-    model: "gemini-3-flash-preview", // Using Flash for verification as well for speed
+    model: "gemini-3-pro-preview",
     contents: prompt,
     config: {
+      thinkingConfig: { thinkingBudget: 12288 },
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,

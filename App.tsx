@@ -157,8 +157,8 @@ const AppContent: React.FC = () => {
           
           <div className="flex items-center gap-3">
              <div className="hidden lg:flex items-center gap-6 text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest mr-6">
-                <Link to="/" className="hover:text-blue-600 transition-colors">Home</Link>
-                <Link to="/history" className="hover:text-blue-600 transition-colors">History</Link>
+                <Link to="/" className="hover:text-blue-600 transition-colors">{t.home}</Link>
+                <Link to="/history" className="hover:text-blue-600 transition-colors">{t.history}</Link>
                 <Link to="/assistant" className="hover:text-blue-600 transition-colors">AI Docs</Link>
              </div>
 
@@ -171,11 +171,11 @@ const AppContent: React.FC = () => {
              </button>
 
              <div className="bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center p-0.5 border border-slate-200 dark:border-slate-700">
-               {(['en', 'hi', 'es'] as Language[]).map(l => (
+               {(['en', 'hi', 'kn', 'es'] as Language[]).map(l => (
                  <button 
                    key={l}
                    onClick={() => setLanguage(l)}
-                   className={`px-2.5 py-1.5 rounded-lg text-[9px] font-black transition-all ${language === l ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-400 dark:text-slate-500'}`}
+                   className={`px-2 py-1.5 rounded-lg text-[9px] font-black transition-all ${language === l ? 'bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-400 dark:text-slate-500'}`}
                  >{l.toUpperCase()}</button>
                ))}
              </div>
@@ -296,11 +296,11 @@ const AppContent: React.FC = () => {
       <nav className="md:hidden fixed bottom-6 left-6 right-6 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-2xl border border-white/10 p-4 flex justify-between items-center z-[100] rounded-[2.5rem] shadow-2xl">
         <Link to="/" className="flex flex-col items-center gap-1 flex-1 text-slate-500 hover:text-white transition-colors">
           <i className="fas fa-house-chimney text-lg"></i>
-          <span className="text-[8px] font-black uppercase tracking-widest">Home</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{t.home}</span>
         </Link>
         <Link to="/history" className="flex flex-col items-center gap-1 flex-1 text-slate-400 hover:text-white transition-colors">
           <i className="fas fa-clock-rotate-left text-lg"></i>
-          <span className="text-[8px] font-black uppercase tracking-widest">History</span>
+          <span className="text-[8px] font-black uppercase tracking-widest">{t.history}</span>
         </Link>
         
         <div className="relative -mt-16 mx-4">

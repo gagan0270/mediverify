@@ -1,5 +1,4 @@
 
-
 export enum MatchStatus {
   PERFECT_MATCH = 'PERFECT_MATCH',
   PARTIAL_MATCH = 'PARTIAL_MATCH',
@@ -20,7 +19,7 @@ export enum ReportSeverity {
   NORMAL = 'NORMAL'
 }
 
-export type Language = 'en' | 'hi' | 'es';
+export type Language = 'en' | 'hi' | 'es' | 'kn';
 
 export interface UserProfile {
   fullName: string;
@@ -51,7 +50,6 @@ export interface PrescriptionData {
 
 export interface TabletData {
   name: string;
-  // Added dosage and frequency to support identified pill properties
   dosage?: string;
   frequency?: string;
   color: string;
@@ -68,10 +66,9 @@ export interface TabletData {
   matchStatus?: 'PERFECT' | 'PARTIAL' | 'MISMATCH' | 'UNKNOWN';
   discrepancyDetails?: string;
   colorContrastWarning?: string;
-  // Categorical matching scores (0-1)
   identityScore?: number;
-  posologyScore?: number; // Dosage strength matching
-  chronologyScore?: number; // Frequency matching
+  posologyScore?: number;
+  chronologyScore?: number;
 }
 
 export interface ReportComponent {
