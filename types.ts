@@ -1,4 +1,5 @@
 
+
 export enum MatchStatus {
   PERFECT_MATCH = 'PERFECT_MATCH',
   PARTIAL_MATCH = 'PARTIAL_MATCH',
@@ -8,8 +9,15 @@ export enum MatchStatus {
 
 export enum AlertSeverity {
   CRITICAL = 'CRITICAL',
+  MAJOR_WARNING = 'MAJOR_WARNING',
   WARNING = 'WARNING',
   INFO = 'INFO'
+}
+
+export enum ReportSeverity {
+  DANGER = 'DANGER',
+  WARNING = 'WARNING',
+  NORMAL = 'NORMAL'
 }
 
 export type Language = 'en' | 'hi' | 'es';
@@ -43,6 +51,9 @@ export interface PrescriptionData {
 
 export interface TabletData {
   name: string;
+  // Added dosage and frequency to support identified pill properties
+  dosage?: string;
+  frequency?: string;
   color: string;
   shape: string;
   imprint: string;
@@ -50,14 +61,45 @@ export interface TabletData {
   imageUrl?: string;
   description?: string;
   uses?: string;
+  genericName?: string;
+  sideEffects?: string;
+  specialWarnings?: string;
   isMatch?: boolean;
+  matchStatus?: 'PERFECT' | 'PARTIAL' | 'MISMATCH' | 'UNKNOWN';
+  discrepancyDetails?: string;
+  colorContrastWarning?: string;
+  // Categorical matching scores (0-1)
+  identityScore?: number;
+  posologyScore?: number; // Dosage strength matching
+  chronologyScore?: number; // Frequency matching
 }
 
-export interface MedicineRate {
+export interface ReportComponent {
   name: string;
-  estimatedPrice: string;
-  description: string;
+  value: string;
+  range: string;
+  status: 'HIGH' | 'LOW' | 'NORMAL' | 'CRITICAL';
+  problemSimplified: string;
+  majorDiseaseRisk: string;
+  suggestedSolution: string;
+}
+
+export interface ReportAnalysis {
+  id: string;
+  reportType: string;
+  doctorName: string;
+  patientName: string;
+  date: string;
+  severity: ReportSeverity;
+  overallHealthGrade: string;
+  simpleSummary: string;
+  highFindings: ReportComponent[];
+  lowFindings: ReportComponent[];
+  normalFindings: ReportComponent[];
+  top3Risks: string[];
+  immediateSteps: string[];
   imageUrl?: string;
+  mimeType?: string;
 }
 
 export interface VerificationResult {

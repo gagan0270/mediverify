@@ -18,6 +18,7 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState('');
+  const [loadingSubMsg, setLoadingSubMsg] = useState('');
   
   const [extractedPrescription, setExtractedPrescription] = useState<PrescriptionData | null>(null);
   const [capturedTablets, setCapturedTablets] = useState<TabletData[]>([]);
@@ -27,11 +28,10 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
   const [tfModel, setTfModel] = useState<cocoSsd.ObjectDetection | null>(null);
   const [focusScore, setFocusScore] = useState(0);
   const [distanceScore, setDistanceScore] = useState(0);
-  const [brightnessLevel, setBrightnessLevel] = useState(0);
+  const [lastBBox, setLastBBox] = useState<number[] | null>(null);
 
   const navigate = useNavigate();
   const prescriptionCameraRef = useRef<HTMLInputElement>(null);
-  const tabletGalleryRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -48,10 +48,50 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
     loadModel();
   }, []);
 
-  /**
-   * Enhances the image for better OCR (sharpening and contrast adjustment)
-   */
-  const enhanceImage = (base64: string): Promise<string> => {
+  const sharpenImage = (ctx: CanvasRenderingContext2D, width: number, height: number, amount: number) => {
+    const weights = [
+      0, -1, 0,
+      -1, 5 + amount, -1,
+      0, -1, 0
+    ];
+    const side = Math.round(Math.sqrt(weights.length));
+    const halfSide = Math.floor(side / 2);
+    const src = ctx.getImageData(0, 0, width, height);
+    const sw = src.width;
+    const sh = src.height;
+    const output = ctx.createImageData(sw, sh);
+    const dst = output.data;
+    const srcData = src.data;
+
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        const sy = y;
+        const sx = x;
+        const dstOff = (y * sw + x) * 4;
+        let r = 0, g = 0, b = 0;
+        for (let cy = 0; cy < side; cy++) {
+          for (let cx = 0; cx < side; cx++) {
+            const scy = sy + cy - halfSide;
+            const scx = sx + cx - halfSide;
+            if (scy >= 0 && scy < sh && scx >= 0 && scx < sw) {
+              const srcOff = (scy * sw + scx) * 4;
+              const wt = weights[cy * side + cx];
+              r += srcData[srcOff] * wt;
+              g += srcData[srcOff + 1] * wt;
+              b += srcData[srcOff + 2] * wt;
+            }
+          }
+        }
+        dst[dstOff] = Math.min(255, Math.max(0, r));
+        dst[dstOff + 1] = Math.min(255, Math.max(0, g));
+        dst[dstOff + 2] = Math.min(255, Math.max(0, b));
+        dst[dstOff + 3] = srcData[dstOff + 3];
+      }
+    }
+    ctx.putImageData(output, 0, 0);
+  };
+
+  const enhanceImage = (base64: string, forImprint: boolean = false, cropBox?: number[]): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -59,19 +99,35 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
         const ctx = canvas.getContext('2d');
         if (!ctx) return resolve(base64);
 
-        canvas.width = img.width;
-        canvas.height = img.height;
+        if (forImprint && cropBox) {
+          const [x, y, w, h] = cropBox;
+          const pad = 20;
+          canvas.width = Math.min(img.width - x, w + pad * 2);
+          canvas.height = Math.min(img.height - y, h + pad * 2);
+          ctx.drawImage(img, Math.max(0, x - pad), Math.max(0, y - pad), canvas.width, canvas.height, 0, 0, canvas.width, canvas.height);
+        } else {
+          canvas.width = img.width;
+          canvas.height = img.height;
+          ctx.drawImage(img, 0, 0);
+        }
         
-        // Draw image
-        ctx.drawImage(img, 0, 0);
-
-        // Apply basic contrast and brightness
-        // Values can be tuned for OCR optimization
-        ctx.filter = 'contrast(1.4) brightness(1.1) saturate(1.1)';
-        ctx.drawImage(img, 0, 0);
-
-        // Resolve enhanced base64
-        resolve(canvas.toDataURL('image/jpeg', 0.9));
+        if (forImprint) {
+          ctx.filter = 'contrast(2.5) brightness(1.2) grayscale(1)';
+        } else {
+          // Boosted contrast specifically for OCR of text documents/prescriptions
+          ctx.filter = 'contrast(2.2) brightness(1.1) grayscale(1)';
+        }
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d')!;
+        tempCtx.filter = ctx.filter;
+        tempCtx.drawImage(canvas, 0, 0);
+        
+        // Increased sharpening for prescriptions to help OCR engine
+        sharpenImage(tempCtx, tempCanvas.width, tempCanvas.height, forImprint ? 2.5 : 1.5);
+        resolve(tempCanvas.toDataURL('image/jpeg', 0.95));
       };
       img.src = base64;
     });
@@ -84,46 +140,42 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
         const video = videoRef.current;
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
-
         if (video.readyState === 4 && ctx) {
           canvas.width = video.videoWidth;
           canvas.height = video.videoHeight;
           const predictions = await tfModel.detect(video);
-          
-          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-          const data = imageData.data;
-          
-          let colorSum = 0;
-          for(let x = 0; x < data.length; x+=16) {
-            colorSum += Math.floor((data[x]+data[x+1]+data[x+2])/3);
-          }
-          const samples = (video.videoWidth * video.videoHeight) / 4;
-          const brightness = Math.floor(colorSum / samples);
-          setBrightnessLevel(brightness);
-
           ctx.clearRect(0, 0, canvas.width, canvas.height);
-          const tabletCandidate = predictions.find(p => p.score > 0.40);
-
+          
+          const tabletCandidate = predictions.find(p => p.score > 0.35);
           if (tabletCandidate) {
             const [x, y, width, height] = tabletCandidate.bbox;
             const confidence = tabletCandidate.score;
-            const idealSize = Math.min(canvas.width, canvas.height) * 0.4;
+            setLastBBox(tabletCandidate.bbox);
+            
+            const idealSize = Math.min(canvas.width, canvas.height) * 0.45;
             const currentSize = Math.max(width, height);
             const distRatio = Math.min(currentSize / idealSize, idealSize / currentSize);
-            setDistanceScore(distRatio);
-            setFocusScore(confidence);
+            
+            setDistanceScore(Math.min(distRatio, 1));
+            setFocusScore(Math.min(confidence, 1));
 
-            let qualityColor = confidence > 0.8 && distRatio > 0.7 ? '#22c55e' : '#eab308';
+            const isGood = confidence > 0.75 && distRatio > 0.7;
+            const isFair = confidence > 0.5 && distRatio > 0.5;
+            const qualityColor = isGood ? '#22c55e' : isFair ? '#eab308' : '#ef4444';
+            
             ctx.strokeStyle = qualityColor;
-            ctx.lineWidth = 4;
+            ctx.lineWidth = 6;
+            ctx.lineJoin = 'round';
             ctx.strokeRect(x, y, width, height);
+          } else {
+            setDistanceScore(0);
+            setFocusScore(0);
+            setLastBBox(null);
           }
         }
       }
       animationFrameId = requestAnimationFrame(detect);
     };
-
     if (showCamera) detect();
     return () => cancelAnimationFrame(animationFrameId);
   }, [showCamera, tfModel]);
@@ -149,59 +201,29 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
     setShowCamera(false);
   };
 
-  const processTabletImage = async (base64: string) => {
-    setLoading(true);
-    setLoadingMsg("Optimizing Imprint Area & Identifying...");
-    try {
-      const enhanced = await enhanceImage(base64);
-      const data = await identifyTablet(enhanced, language);
-      setCapturedTablets(prev => [...prev, data]);
-      setStep(3);
-    } catch (err) {
-      alert("Identification failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const captureTablet = async () => {
     if (videoRef.current) {
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;
       canvas.getContext('2d')?.drawImage(videoRef.current, 0, 0);
-      const base64 = canvas.toDataURL('image/jpeg', 0.95); // High quality for imprint OCR
+      const base64 = canvas.toDataURL('image/jpeg', 0.95);
+      
+      const currentBBox = lastBBox;
       stopCamera();
-      await processTabletImage(base64);
-    }
-  };
-
-  const handleTabletGalleryUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
-    setLoading(true);
-    setLoadingMsg(`Processing ${files.length} images...`);
-
-    try {
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const reader = new FileReader();
-        const base64 = await new Promise<string>((resolve) => {
-          reader.onload = () => resolve(reader.result as string);
-          reader.readAsDataURL(file);
-        });
-        
-        setLoadingMsg(`Optimizing & Identifying Tablet ${i + 1} of ${files.length}...`);
-        const enhanced = await enhanceImage(base64);
+      setLoading(true);
+      setLoadingMsg("Identifying Medication...");
+      setLoadingSubMsg("Applying specialized area-sharpening for imprint text isolation.");
+      try {
+        const enhanced = await enhanceImage(base64, true, currentBBox || undefined);
         const data = await identifyTablet(enhanced, language);
         setCapturedTablets(prev => [...prev, data]);
+        setStep(3);
+      } catch (err) {
+        alert("Pill identification failed. Please try again with clearer lighting.");
+      } finally {
+        setLoading(false);
       }
-      setStep(3);
-    } catch (err) {
-      alert("Batch processing failed.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -212,14 +234,15 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
     reader.onload = async () => {
       const base64 = reader.result as string;
       setLoading(true);
-      setLoadingMsg("Optimizing Prescription OCR Accuracy...");
+      setLoadingMsg("Digitizing Prescription...");
+      setLoadingSubMsg("Applying clinical-grade high-contrast filtering and sharpening for OCR.");
       try {
         const enhanced = await enhanceImage(base64);
         const data = await analyzePrescription(enhanced, language);
         setExtractedPrescription(data);
         setStep(2);
       } catch (err) {
-        alert('OCR Analysis failed.');
+        alert('Prescription scan failed. Please ensure text is clear and well-lit.');
       } finally {
         setLoading(false);
       }
@@ -227,410 +250,279 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
     reader.readAsDataURL(file);
   };
 
-  const performSafetyCheck = async () => {
+  const handleVerify = async () => {
     if (!extractedPrescription || capturedTablets.length === 0) return;
     setLoading(true);
-    setLoadingMsg("Deep Clinical Verification (Thinking Mode)...");
+    setLoadingMsg("Running Clinical Audit...");
+    setLoadingSubMsg("Nuanced posology matching and pharmacological color contrast audit in progress.");
     try {
       const result = await verifyMedicineSafety(user, extractedPrescription, capturedTablets, language);
       setFinalResult(result);
+      onComplete(result);
       setStep(4);
     } catch (err) {
-      alert('Safety analysis failed.');
+      alert("Verification failed.");
     } finally {
       setLoading(false);
     }
   };
 
+  const getScoreColor = (score?: number) => {
+    if (score === undefined) return 'bg-slate-200 dark:bg-slate-800';
+    if (score >= 0.95) return 'bg-emerald-500';
+    if (score >= 0.8) return 'bg-blue-500';
+    if (score >= 0.6) return 'bg-amber-500';
+    return 'bg-rose-500';
+  };
+
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 space-y-10 animate-in fade-in">
+      <div className="flex flex-col items-center justify-center py-32 space-y-12 animate-in fade-in max-w-3xl mx-auto px-6">
         <div className="relative">
-          <div className="w-24 h-24 border-4 border-blue-100 rounded-full"></div>
-          <div className="absolute top-0 w-24 h-24 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-          <div className="absolute inset-0 flex items-center justify-center text-blue-600">
-             <i className="fas fa-brain text-2xl"></i>
+          <div className="w-48 h-48 border-[12px] border-slate-100 dark:border-slate-800 rounded-[4rem] animate-pulse"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+             <i className="fas fa-shield-heart text-blue-600 dark:text-blue-400 text-6xl animate-bounce"></i>
           </div>
         </div>
-        <div className="text-center space-y-2">
-           <h2 className="text-3xl font-black text-slate-800 tracking-tight">{loadingMsg}</h2>
-           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Gemini Intelligence</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (showCamera) {
-    const isQualityGood = focusScore > 0.7 && distanceScore > 0.6;
-    return (
-      <div className="fixed inset-0 bg-black z-[100] flex flex-col font-sans">
-        <div className="relative flex-grow">
-          <video ref={videoRef} autoPlay playsInline className="absolute inset-0 w-full h-full object-cover opacity-90" />
-          <canvas ref={canvasRef} className="absolute inset-0 pointer-events-none" />
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <div className={`w-72 h-72 border-4 rounded-[3rem] transition-all duration-300 ${isQualityGood ? 'border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.3)]' : 'border-white/20'}`}></div>
-            {!isQualityGood && <p className="mt-8 text-white/50 text-xs font-black uppercase tracking-widest text-center px-6">Ensure imprint is visible & center in frame</p>}
-          </div>
-        </div>
-        <div className="bg-slate-900 p-10 flex justify-between items-center px-12">
-           <Button variant="ghost" className="text-white w-14 h-14 rounded-full bg-white/5" onClick={stopCamera}>
-             <i className="fas fa-times text-xl"></i>
-           </Button>
-           <button 
-             onClick={captureTablet} 
-             className={`w-24 h-24 rounded-full border-4 flex items-center justify-center transition-transform active:scale-95 ${isQualityGood ? 'bg-white border-green-500 scale-110 shadow-2xl' : 'bg-white/10 border-white/20'}`}
-           >
-             <div className="w-20 h-20 rounded-full bg-blue-600 flex items-center justify-center text-white">
-                <i className="fas fa-camera text-2xl"></i>
-             </div>
-           </button>
-           <button 
-             onClick={() => { stopCamera(); tabletGalleryRef.current?.click(); }}
-             className="text-white w-14 h-14 rounded-full bg-white/5 flex items-center justify-center"
-           >
-              <i className="fas fa-image text-xl"></i>
-           </button>
+        <div className="text-center space-y-4">
+           <h2 className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">{loadingMsg}</h2>
+           <p className="text-slate-500 dark:text-slate-400 font-medium italic">{loadingSubMsg}</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-12 pb-24 px-4 font-sans">
-      <input 
-        type="file" 
-        multiple 
-        accept="image/*" 
-        className="hidden" 
-        ref={tabletGalleryRef} 
-        onChange={handleTabletGalleryUpload} 
-      />
+    <div className="max-w-4xl mx-auto space-y-10 animate-in fade-in duration-500 px-4 pb-24">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-4xl font-black text-slate-900 dark:text-white tracking-tighter">Safety Check</h1>
+        <div className="flex gap-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className={`w-4 h-4 rounded-full transition-all ${step >= i ? 'bg-blue-600 scale-110' : 'bg-slate-200 dark:bg-slate-800 opacity-50'}`}></div>
+          ))}
+        </div>
+      </div>
 
       {step === 1 && (
-        <div className="text-center py-20 space-y-12 animate-in fade-in duration-700">
-           <div className="relative inline-block">
-              <div className="bg-blue-600/5 w-40 h-40 rounded-[3rem] flex items-center justify-center mx-auto text-blue-600 text-6xl border border-blue-100 shadow-inner">
-                 <i className="fas fa-file-prescription"></i>
-              </div>
-              <div className="absolute -bottom-2 -right-2 bg-blue-600 text-white w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg border-4 border-slate-50">
-                 <i className="fas fa-plus"></i>
-              </div>
-           </div>
-           <div className="space-y-4">
-              <h1 className="text-5xl font-black text-slate-900 tracking-tight">Step 1: Prescription Scan</h1>
-              <p className="text-slate-500 text-xl font-medium max-w-lg mx-auto">Place your doctor's prescription in clear view. Our AI uses high-precision OCR to extract details.</p>
-           </div>
-           <div className="flex flex-col items-center gap-6 max-w-sm mx-auto w-full">
-              <input type="file" accept="image/*" capture="environment" className="hidden" ref={prescriptionCameraRef} onChange={handleCapturePrescription} />
-              <Button onClick={() => prescriptionCameraRef.current?.click()} className="h-20 w-full text-xl rounded-3xl shadow-2xl shadow-blue-500/20">
-                <i className="fas fa-camera-retro mr-3"></i>{t.capture_prescription}
-              </Button>
-              <Button variant="ghost" onClick={() => navigate('/')} className="font-black uppercase tracking-widest text-[10px] text-slate-400">{t.cancel}</Button>
-           </div>
-        </div>
-      )}
-
-      {step === 2 && extractedPrescription && (
-        <div className="space-y-10 animate-in slide-in-from-bottom-8">
-          <div className="flex justify-between items-end">
-             <div>
-                <p className="text-blue-600 font-black uppercase tracking-[0.3em] text-[10px] mb-2">Prescription Confirmed</p>
-                <h2 className="text-4xl font-black text-slate-900 tracking-tight">Extracted Medication List</h2>
-             </div>
-             <Badge color="green" className="py-2 px-6 rounded-xl">Step 2 of 3</Badge>
+        <Card title="Step 1: Scan Prescription" className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden p-10">
+          <div className="space-y-10 text-center py-6">
+            <div className="w-32 h-32 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-[2.5rem] mx-auto flex items-center justify-center text-5xl shadow-inner">
+              <i className="fas fa-file-prescription"></i>
+            </div>
+            <div className="space-y-3">
+               <h2 className="text-3xl font-black text-slate-900 dark:text-white">Upload Prescription</h2>
+               <p className="text-slate-500 dark:text-slate-400 font-medium max-w-sm mx-auto">AI will extract medicine names, dosages, and frequency for matching.</p>
+            </div>
+            <input type="file" className="hidden" ref={prescriptionCameraRef} onChange={handleCapturePrescription} accept="image/*" />
+            <Button onClick={() => prescriptionCameraRef.current?.click()} className="w-full h-20 rounded-[1.5rem] text-xl font-black shadow-xl shadow-blue-500/20">
+               <i className="fas fa-camera mr-3"></i> Take or Upload Photo
+            </Button>
           </div>
-
-          <Card className="rounded-[3rem] shadow-2xl border-none">
-             <div className="p-6 space-y-10">
-                <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 grid grid-cols-1 md:grid-cols-2 gap-8 shadow-inner">
-                   <div className="flex items-center gap-6">
-                      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm">
-                         <i className="fas fa-user-md text-2xl"></i>
-                      </div>
-                      <div>
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Doctor Name</p>
-                         <p className="font-black text-slate-800 text-xl">Dr. {extractedPrescription.doctorName}</p>
-                      </div>
-                   </div>
-                   <div className="flex items-center gap-6">
-                      <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center text-blue-600 shadow-sm">
-                         <i className="fas fa-calendar-day text-2xl"></i>
-                      </div>
-                      <div>
-                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Issue Date</p>
-                         <p className="font-black text-slate-800 text-xl">{extractedPrescription.date || 'Today'}</p>
-                      </div>
-                   </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between">
-                     <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Required Items</h3>
-                     <Badge color="blue">{extractedPrescription.medicines.length} Medicines</Badge>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {extractedPrescription.medicines.map((m, i) => (
-                      <div key={i} className="p-6 bg-white border-2 border-slate-50 hover:border-blue-100 rounded-3xl flex items-center gap-5 transition-all group">
-                         <div className="w-14 h-14 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center group-hover:bg-blue-600 group-hover:text-white transition-colors">
-                            <i className="fas fa-pills text-2xl"></i>
-                         </div>
-                         <div>
-                            <p className="font-black text-slate-800 text-lg leading-tight">{m.name}</p>
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mt-1 tracking-tighter">{m.dosage} • {m.frequency}</p>
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="pt-10 border-t border-slate-100 space-y-8">
-                   <div className="text-center space-y-3">
-                      <h3 className="text-3xl font-black text-slate-900 tracking-tight">Step 2: Scan Tablets Now</h3>
-                      <p className="text-slate-500 font-medium max-w-lg mx-auto">Verify your medications by scanning the physical tablets. Our AI uses imprint area sharpening for maximum accuracy.</p>
-                   </div>
-                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto">
-                      <Button onClick={startCamera} className="h-20 rounded-[1.5rem] text-xl bg-indigo-600 hover:bg-indigo-700 shadow-2xl shadow-indigo-500/20">
-                        <i className="fas fa-camera-retro mr-3"></i>Scan Tablets
-                      </Button>
-                      <Button variant="secondary" onClick={() => tabletGalleryRef.current?.click()} className="h-20 rounded-[1.5rem] text-xl border-2">
-                        <i className="fas fa-images mr-3"></i>Upload Gallery
-                      </Button>
-                   </div>
-                </div>
-             </div>
-          </Card>
-        </div>
+        </Card>
       )}
 
-      {step === 3 && (
-        <div className="space-y-12 animate-in zoom-in-95 duration-500">
-           <div className="text-center space-y-4">
-              <div className="inline-flex items-center gap-2 bg-blue-50 px-6 py-2 rounded-full border border-blue-100 text-[10px] font-black uppercase text-blue-600 tracking-[0.2em] mb-4">
-                <i className="fas fa-check-circle"></i> Samples Captured
+      {step === 2 && (
+        <Card title="Step 2: Identify Medication" className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden p-10">
+          {!showCamera ? (
+            <div className="space-y-10 text-center py-6">
+              <div className="w-32 h-32 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-[2.5rem] mx-auto flex items-center justify-center text-5xl shadow-inner">
+                <i className="fas fa-pills"></i>
               </div>
-              <h2 className="text-5xl font-black text-slate-900 tracking-tight">Confirm Samples</h2>
-              <p className="text-slate-500 text-lg font-medium">Review identified tablet samples before final cross-verification.</p>
-           </div>
-
-           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-              {capturedTablets.map((t, idx) => (
-                <div key={idx} className="group relative">
-                  <Card className="overflow-hidden rounded-[2.5rem] border-none shadow-xl group-hover:shadow-2xl transition-all duration-300 transform group-hover:-translate-y-2">
-                     <div className="relative aspect-square">
-                        <img src={t.imageUrl} className="w-full h-full object-cover" alt="Tablet sample" />
-                        <div className="absolute top-4 right-4">
-                           <button 
-                             onClick={() => setCapturedTablets(prev => prev.filter((_, i) => i !== idx))}
-                             className="bg-red-600 text-white w-10 h-10 rounded-xl flex items-center justify-center shadow-lg active:scale-90"
-                           >
-                             <i className="fas fa-trash-alt"></i>
-                           </button>
-                        </div>
-                     </div>
-                     <div className="p-6 space-y-4">
-                        <div className="flex justify-between items-start">
-                           <h4 className="font-black text-slate-800 text-lg leading-tight truncate pr-2">{t.name}</h4>
-                           <Badge color="blue">#{idx + 1}</Badge>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                           <Badge color="yellow" className="text-[10px]">{t.color}</Badge>
-                           <Badge color="blue" className="text-[10px]">{t.shape}</Badge>
-                        </div>
-                     </div>
-                  </Card>
-                </div>
-              ))}
-              
-              <button 
-                onClick={startCamera}
-                className="h-full min-h-[220px] border-4 border-dashed border-slate-200 rounded-[2.5rem] flex flex-col items-center justify-center text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50/50 transition-all group"
-              >
-                <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mb-4 group-hover:bg-blue-100 transition-colors">
-                  <i className="fas fa-plus text-2xl"></i>
-                </div>
-                <span className="font-black uppercase tracking-widest text-[10px]">Add via Camera</span>
-              </button>
-           </div>
-
-           <div className="flex flex-col sm:flex-row gap-6 pt-10 max-w-2xl mx-auto">
-              <Button variant="ghost" className="flex-1 h-18 text-slate-400 font-black uppercase tracking-widest text-xs" onClick={() => setStep(2)}>
-                <i className="fas fa-arrow-left mr-2"></i>Edit List
+              <h2 className="text-3xl font-black text-slate-900 dark:text-white">Scan Physical Pill</h2>
+              <p className="text-slate-500 dark:text-slate-400 font-medium max-w-sm mx-auto mb-4">Position the tablet clearly. Our AI will automatically sharpen the imprint area for verification.</p>
+              <Button onClick={startCamera} className="w-full h-20 rounded-[1.5rem] text-xl font-black bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/20">
+                 <i className="fas fa-microscope mr-3"></i> Open Scanner
               </Button>
-              <Button className="flex-[2] h-20 text-xl rounded-3xl shadow-2xl shadow-blue-500/30 bg-blue-600" onClick={performSafetyCheck}>
-                 <i className="fas fa-shield-check mr-3"></i>Cross-Match All Samples
-              </Button>
-           </div>
-        </div>
+            </div>
+          ) : (
+            <div className="relative rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-slate-900 dark:border-slate-800">
+               <video ref={videoRef} autoPlay playsInline className="w-full aspect-[4/3] object-cover" />
+               <canvas ref={canvasRef} className="absolute inset-0 w-full h-full pointer-events-none" />
+               
+               <div className="absolute top-8 left-8 right-8 flex justify-between gap-4">
+                  <Badge color="blue" className="bg-black/40 backdrop-blur-xl border-white/20 text-white px-6 py-2 uppercase tracking-[0.2em] font-black">
+                     Area-Specific Capture
+                  </Badge>
+               </div>
+
+               <div className="absolute bottom-12 left-0 right-0 flex justify-center px-12 gap-4">
+                  <Button variant="danger" onClick={stopCamera} className="h-20 w-20 rounded-2xl p-0">
+                     <i className="fas fa-times text-2xl"></i>
+                  </Button>
+                  <Button onClick={captureTablet} className="h-20 flex-grow rounded-2xl bg-white text-slate-900 hover:bg-slate-100 shadow-2xl font-black text-xl">
+                     <i className="fas fa-circle text-red-500 mr-3 animate-pulse"></i> Capture Imprint
+                  </Button>
+               </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {step === 3 && (extractedPrescription || capturedTablets.length > 0) && (
+        <Card title="Step 3: Verification Audit" className="rounded-[2.5rem] border-none shadow-2xl overflow-hidden p-10">
+          <div className="space-y-10">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className="p-8 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Prescription Data</p>
+                 <div className="space-y-3">
+                   <p className="font-black text-2xl text-slate-900 dark:text-white leading-tight">Dr. {extractedPrescription?.doctorName}</p>
+                   <p className="text-sm font-bold text-blue-600 dark:text-blue-400">{extractedPrescription?.medicines?.[0]?.name}</p>
+                   <p className="text-xs font-bold text-slate-500">{extractedPrescription?.medicines?.[0]?.dosage} • {extractedPrescription?.medicines?.[0]?.frequency}</p>
+                 </div>
+              </div>
+              <div className="p-8 bg-slate-50 dark:bg-slate-800/50 rounded-[2rem] border border-slate-100 dark:border-slate-800 relative overflow-hidden">
+                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Physical Identification</p>
+                 <div className="flex items-center gap-6">
+                    <img src={capturedTablets[0]?.imageUrl} className="w-16 h-16 rounded-2xl object-cover shadow-xl border-2 border-white dark:border-slate-700" alt="Pill" />
+                    <div>
+                      <p className="font-black text-2xl text-slate-900 dark:text-white leading-tight">{capturedTablets[0]?.name}</p>
+                      <Badge color="blue" className="mt-2 font-black">Imprint: {capturedTablets[0]?.imprint}</Badge>
+                    </div>
+                 </div>
+              </div>
+            </div>
+            <Button onClick={handleVerify} className="w-full h-20 rounded-[1.5rem] text-2xl font-black shadow-2xl shadow-blue-500/20 bg-blue-600">
+               <i className="fas fa-shield-check mr-3"></i> Run Full Safety Audit
+            </Button>
+          </div>
+        </Card>
       )}
 
       {step === 4 && finalResult && (
-        <div className="space-y-12 animate-in fade-in duration-1000 pb-20 max-w-5xl mx-auto">
-           {/* Top Summary Header */}
-           <div className={`p-16 rounded-[4rem] text-center shadow-2xl text-white relative overflow-hidden ${finalResult.matchStats.unmatchedCount > 0 ? 'bg-red-600' : 'bg-green-600'}`}>
-              <div className="absolute top-0 right-0 p-12 opacity-10 rotate-12 pointer-events-none">
-                 <i className={`fas ${finalResult.matchStats.unmatchedCount > 0 ? 'fa-triangle-exclamation' : 'fa-shield-check'} text-[240px]`}></i>
+        <div className="space-y-10 animate-in zoom-in-95 duration-700 pb-20">
+           <div className={`p-16 rounded-[4rem] text-center text-white shadow-2xl relative overflow-hidden ${
+             finalResult.status === MatchStatus.PERFECT_MATCH ? 'bg-gradient-to-br from-emerald-500 to-teal-700' : 
+             finalResult.status === MatchStatus.PARTIAL_MATCH ? 'bg-gradient-to-br from-amber-500 to-orange-700' : 'bg-gradient-to-br from-rose-600 to-red-800'
+           }`}>
+              <div className="absolute top-0 right-0 p-16 opacity-10 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
+                 <i className={`fas ${finalResult.status === MatchStatus.PERFECT_MATCH ? 'fa-check-circle' : 'fa-biohazard'} text-[200px]`}></i>
               </div>
               <div className="relative z-10 space-y-8">
-                 <div className="inline-block p-6 bg-white/20 rounded-[2rem] backdrop-blur-xl border border-white/20 shadow-inner mb-4">
-                    <i className={`fas ${finalResult.matchStats.unmatchedCount > 0 ? 'fa-hand-stop' : 'fa-check-double'} text-5xl`}></i>
-                 </div>
-                 <div className="space-y-2">
-                    <h2 className="text-6xl font-black tracking-tighter leading-none">{finalResult.matchStats.unmatchedCount > 0 ? 'Safety Alert' : 'Verification Success'}</h2>
-                    <p className="text-white/80 font-black uppercase tracking-[0.4em] text-xs">Clinical Verification Complete</p>
-                 </div>
-                 <div className="inline-flex gap-12 bg-black/15 backdrop-blur-xl px-12 py-5 rounded-[2rem] border border-white/10 shadow-2xl">
-                    <div className="text-center">
-                       <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Prescribed</p>
-                       <p className="text-3xl font-black">{finalResult.matchStats.totalPrescribed}</p>
-                    </div>
-                    <div className="text-center">
-                       <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Matched</p>
-                       <p className="text-3xl font-black">{finalResult.matchStats.matchedCount}</p>
-                    </div>
-                    <div className="text-center">
-                       <p className="text-[10px] font-black uppercase opacity-60 tracking-widest mb-1">Mismatched</p>
-                       <p className={`text-3xl font-black ${finalResult.matchStats.unmatchedCount > 0 ? 'text-red-200 animate-pulse' : ''}`}>{finalResult.matchStats.unmatchedCount}</p>
-                    </div>
-                 </div>
+                <div className="w-24 h-24 bg-white/20 rounded-[2rem] mx-auto flex items-center justify-center text-5xl backdrop-blur-xl border border-white/30 shadow-2xl">
+                   <i className={`fas ${finalResult.status === MatchStatus.PERFECT_MATCH ? 'fa-check-double' : 'fa-triangle-exclamation'}`}></i>
+                </div>
+                <div>
+                  <h2 className="text-5xl font-black tracking-tighter mb-3 drop-shadow-md">
+                    {finalResult.status === MatchStatus.PERFECT_MATCH ? 'Verified Safe' : 
+                     finalResult.status === MatchStatus.PARTIAL_MATCH ? 'Caution Advised' : 'Critical Alert'}
+                  </h2>
+                  <p className="text-white/80 font-black uppercase tracking-[0.3em] text-xs">
+                    Clinical Match Score: {(finalResult.matchScore * 100).toFixed(0)}%
+                  </p>
+                </div>
               </div>
            </div>
 
-           {/* Results List - Separated Matched vs Unmatched */}
-           <div className="space-y-10">
-              <div className="flex items-center gap-4">
-                 <div className="h-px bg-slate-200 flex-grow"></div>
-                 <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.5em]">Detailed Tablet Analysis</h3>
-                 <div className="h-px bg-slate-200 flex-grow"></div>
-              </div>
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              <Card title="Clinical Insights" className="rounded-[2.5rem] border-none shadow-xl p-8">
+                 <div className="space-y-10">
+                    {(finalResult.identifiedTablets || []).map((tablet, idx) => (
+                      <div key={idx} className="space-y-8">
+                        <div className="p-8 bg-slate-50 dark:bg-slate-800 rounded-[2.5rem] border border-slate-100 dark:border-slate-800">
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Therapeutic Profile</p>
+                           <p className="font-black text-2xl text-slate-900 dark:text-white mb-2 leading-none">{tablet.genericName}</p>
+                           <p className="text-sm font-bold text-slate-500 dark:text-slate-400 italic mb-6">"{tablet.uses}"</p>
+                           
+                           <div className="grid grid-cols-3 gap-4">
+                              {[
+                                { label: 'Identity', score: tablet.identityScore },
+                                { label: 'Dosage', score: tablet.posologyScore },
+                                { label: 'Freq.', score: tablet.chronologyScore }
+                              ].map((s, i) => (
+                                <div key={i} className="bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                                   <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">{s.label}</p>
+                                   <div className="flex items-center gap-2">
+                                      <div className={`w-2.5 h-2.5 rounded-full ${getScoreColor(s.score)}`}></div>
+                                      <span className="font-black text-slate-800 dark:text-white">{(s.score || 0) * 100}%</span>
+                                   </div>
+                                </div>
+                              ))}
+                           </div>
+                        </div>
 
-              {/* Unmatched Items First (Critical Priority) */}
-              {finalResult.matchStats.unmatchedCount > 0 && (
-                <div className="space-y-6">
-                   <div className="flex items-center gap-3 px-4">
-                      <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center text-red-600">
-                         <i className="fas fa-triangle-exclamation text-sm"></i>
-                      </div>
-                      <h4 className="text-xl font-black text-red-600 uppercase tracking-tight">Foreign Substance Detected (Mismatched)</h4>
-                   </div>
-                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {finalResult.identifiedTablets.filter(t => !t.isMatch).map((tablet, i) => (
-                        <Card key={i} className="rounded-[3rem] border-2 border-red-200 shadow-xl bg-red-50/20 hover:shadow-2xl transition-all group overflow-visible">
-                           <div className="p-6 space-y-6">
-                              <div className="flex gap-6 items-start">
-                                 <div className="relative shrink-0">
-                                    <img src={tablet.imageUrl} className="w-24 h-24 rounded-[1.5rem] object-cover border-4 border-white shadow-xl grayscale-[0.5]" alt="Mismatch" />
-                                    <div className="absolute -bottom-2 -right-2 bg-red-600 text-white w-8 h-8 rounded-xl flex items-center justify-center shadow-lg">
-                                       <i className="fas fa-times text-xs"></i>
-                                    </div>
-                                 </div>
-                                 <div className="space-y-1">
-                                    <h4 className="text-2xl font-black text-red-900 leading-tight">{tablet.name}</h4>
-                                    <p className="text-[10px] font-black text-red-600 uppercase tracking-widest">Mismatch Warning</p>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                       <Badge color="red" className="text-[9px]">{tablet.color}</Badge>
-                                       <Badge color="red" className="text-[9px]">{tablet.shape}</Badge>
-                                    </div>
-                                 </div>
-                              </div>
-                              <div className="bg-red-600/5 p-6 rounded-[2rem] space-y-4 border border-red-100 shadow-inner">
-                                 <div>
-                                    <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Deep Clinical Description</p>
-                                    <p className="text-sm font-medium text-red-900/70 leading-relaxed whitespace-pre-wrap">{tablet.description}</p>
-                                 </div>
-                                 <div className="pt-4 border-t border-red-200/50">
-                                    <p className="text-[10px] font-black text-red-400 uppercase tracking-widest mb-1">Medical Indication</p>
-                                    <p className="text-sm font-bold text-red-900 leading-relaxed whitespace-pre-wrap">{tablet.uses}</p>
-                                 </div>
-                              </div>
-                              <div className="p-4 bg-red-600 text-white rounded-2xl text-[10px] font-black uppercase text-center tracking-[0.3em] shadow-lg">
-                                 Hazard: DO NOT CONSUME - NOT PRESCRIBED
+                        <div className="space-y-6">
+                           <div>
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                                <i className="fas fa-triangle-exclamation text-amber-500"></i> Side Effects & Warnings
+                              </p>
+                              <div className="bg-amber-50/50 dark:bg-amber-950/20 p-6 rounded-3xl border border-amber-100 dark:border-amber-900/30">
+                                 <p className="text-xs font-bold text-amber-900 dark:text-amber-200 leading-relaxed mb-4">
+                                   {tablet.sideEffects || 'Common side effects not specified.'}
+                                 </p>
+                                 {tablet.specialWarnings && (
+                                   <div className="pt-4 border-t border-amber-200 dark:border-amber-900/40">
+                                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2">Patient-Specific Alert</p>
+                                      <p className="text-xs font-black text-amber-700 dark:text-amber-400 leading-relaxed italic">{tablet.specialWarnings}</p>
+                                   </div>
+                                 )}
                               </div>
                            </div>
-                        </Card>
-                      ))}
-                   </div>
-                </div>
-              )}
 
-              {/* Matched Items */}
-              {finalResult.matchStats.matchedCount > 0 && (
-                <div className="space-y-6">
-                   <div className="flex items-center gap-3 px-4">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                         <i className="fas fa-check-circle text-sm"></i>
+                           {tablet.colorContrastWarning && (
+                             <div className="p-6 bg-red-50 dark:bg-red-950/20 rounded-3xl border-2 border-red-100 dark:border-red-900/30 animate-pulse">
+                                <div className="flex items-center gap-3 text-red-600 dark:text-red-400 font-black text-sm uppercase mb-3">
+                                   <i className="fas fa-eye-dropper"></i> Color Consistency Alert
+                                </div>
+                                <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed">
+                                   {tablet.colorContrastWarning}
+                                </p>
+                             </div>
+                           )}
+                        </div>
                       </div>
-                      <h4 className="text-xl font-black text-green-600 uppercase tracking-tight">Verified Matches</h4>
-                   </div>
-                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {finalResult.identifiedTablets.filter(t => t.isMatch).map((tablet, i) => (
-                        <Card key={i} className="rounded-[3rem] border-none shadow-xl bg-white hover:shadow-2xl transition-all group overflow-visible">
-                           <div className="p-6 space-y-6">
-                              <div className="flex gap-6 items-start">
-                                 <div className="relative shrink-0">
-                                    <img src={tablet.imageUrl} className="w-24 h-24 rounded-[1.5rem] object-cover border-4 border-white shadow-xl" alt="Match" />
-                                    <div className="absolute -bottom-2 -right-2 bg-green-500 text-white w-8 h-8 rounded-xl flex items-center justify-center shadow-lg">
-                                       <i className="fas fa-check text-xs"></i>
-                                    </div>
-                                 </div>
-                                 <div className="space-y-1">
-                                    <h4 className="text-2xl font-black text-slate-900 leading-tight">{tablet.name}</h4>
-                                    <p className="text-[10px] font-black text-green-600 uppercase tracking-widest">Matched Medication</p>
-                                    <div className="flex flex-wrap gap-2 mt-2">
-                                       <Badge color="blue" className="text-[9px] bg-blue-50/50">{tablet.color}</Badge>
-                                       <Badge color="blue" className="text-[9px] bg-blue-50/50">{tablet.shape}</Badge>
-                                    </div>
-                                 </div>
+                    ))}
+                 </div>
+              </Card>
+
+              <div className="space-y-8">
+                <Card title="Safety Log" className="rounded-[2.5rem] border-none shadow-xl p-8">
+                  <div className="space-y-4">
+                      {finalResult.alerts.map((alert, i) => (
+                        <div key={i} className={`p-6 rounded-[2rem] border-2 transition-all hover:scale-[1.02] ${
+                          alert.type === AlertSeverity.CRITICAL ? 'bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30' : 
+                          alert.type === AlertSeverity.MAJOR_WARNING ? 'bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900/30' :
+                          'bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/30'
+                        }`}>
+                           <div className="flex items-center gap-4 mb-3">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                                alert.type === AlertSeverity.CRITICAL ? 'bg-red-600 text-white' : 
+                                alert.type === AlertSeverity.MAJOR_WARNING ? 'bg-orange-500 text-white' :
+                                'bg-blue-600 text-white'
+                              }`}>
+                                <i className={`fas ${
+                                  alert.type === AlertSeverity.CRITICAL ? 'fa-skull-crossbones' : 
+                                  alert.type === AlertSeverity.MAJOR_WARNING ? 'fa-biohazard' :
+                                  'fa-info-circle'
+                                }`}></i>
                               </div>
-                              <div className="bg-slate-50 p-6 rounded-[2rem] space-y-4 border border-slate-100 shadow-inner">
-                                 <div>
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Pharmacology & Mechanism</p>
-                                    <p className="text-sm font-medium text-slate-600 leading-relaxed whitespace-pre-wrap">{tablet.description}</p>
-                                 </div>
-                                 <div className="pt-4 border-t border-slate-200/50">
-                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Therapeutic Benefits</p>
-                                    <p className="text-sm font-bold text-slate-700 leading-relaxed whitespace-pre-wrap">{tablet.uses}</p>
-                                 </div>
-                              </div>
+                              <p className="font-black text-slate-900 dark:text-white text-lg leading-tight">{alert.title}</p>
                            </div>
-                        </Card>
+                           <p className="text-xs font-bold text-slate-600 dark:text-slate-400 leading-relaxed pl-14">
+                              {alert.description}
+                           </p>
+                        </div>
                       ))}
-                   </div>
+                      {finalResult.alerts.length === 0 && (
+                        <div className="flex flex-col items-center justify-center py-20 text-emerald-500/30 gap-4">
+                           <i className="fas fa-clipboard-check text-6xl"></i>
+                           <p className="font-black uppercase tracking-widest text-xs">Clinical Consistency Verified</p>
+                        </div>
+                      )}
+                  </div>
+                </Card>
+
+                <div className="p-8 bg-slate-900 dark:bg-slate-800 rounded-[3rem] text-white">
+                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2 text-center">Audit Intelligence Trace</p>
+                   <p className="text-sm font-bold italic opacity-80 leading-relaxed text-center">
+                      "Checked against clinical norms for {capturedTablets[0]?.name}. Audit includes nuanced dosage naming normalization and frequency chronology validation."
+                   </p>
                 </div>
-              )}
-           </div>
-
-           {/* Safety Alerts Card */}
-           <Card title="Clinical Safety Intelligence" className="rounded-[3rem] shadow-xl border-none">
-              <div className="space-y-4">
-                 {finalResult.alerts.map((alert, i) => (
-                   <div key={i} className={`flex gap-8 p-8 rounded-[2.5rem] border transition-all ${alert.type === 'CRITICAL' ? 'bg-red-50 border-red-100 shadow-inner' : 'bg-slate-50 border-slate-100 shadow-sm'}`}>
-                      <div className={`shrink-0 w-16 h-16 rounded-[1.5rem] flex items-center justify-center text-2xl shadow-xl ${alert.type === 'CRITICAL' ? 'bg-red-600 text-white shadow-red-500/30' : 'bg-blue-600 text-white shadow-blue-500/30'}`}>
-                         <i className={`fas ${alert.type === 'CRITICAL' ? 'fa-biohazard' : 'fa-info-circle'}`}></i>
-                      </div>
-                      <div className="space-y-2">
-                         <h4 className={`text-2xl font-black tracking-tight ${alert.type === 'CRITICAL' ? 'text-red-900' : 'text-slate-900'}`}>{alert.title}</h4>
-                         <p className={`text-base font-medium leading-relaxed ${alert.type === 'CRITICAL' ? 'text-red-800/70' : 'text-slate-500'}`}>{alert.description}</p>
-                      </div>
-                   </div>
-                 ))}
-                 {finalResult.alerts.length === 0 && (
-                    <div className="text-center py-16 bg-green-50 rounded-[3rem] border-4 border-dashed border-green-100">
-                       <i className="fas fa-shield-check text-7xl text-green-500 mb-6 drop-shadow-sm opacity-50"></i>
-                       <p className="font-black text-slate-800 text-2xl tracking-tight">Zero Clinical Safety Threats Detected</p>
-                       <p className="text-xs text-slate-400 font-black uppercase tracking-[0.2em] mt-1">Verified via Gemini Neural Cross-Match</p>
-                    </div>
-                 )}
               </div>
-           </Card>
-
-           <div className="flex flex-col sm:flex-row gap-6 pt-10">
-              <Button variant="ghost" className="flex-1 h-20 rounded-[2.5rem] font-black uppercase text-xs tracking-[0.3em] text-slate-400 hover:text-red-500" onClick={() => navigate('/')}>
-                 <i className="fas fa-chevron-left mr-3"></i>Dashboard
-              </Button>
-              <Button className="flex-[2] h-20 rounded-[2.5rem] bg-slate-900 hover:bg-black shadow-2xl text-white font-black uppercase tracking-[0.3em] text-xs py-10" onClick={() => { onComplete(finalResult); navigate('/'); }}>
-                 <i className="fas fa-check-double mr-3"></i>Confirm & Secure Record
-              </Button>
            </div>
+
+           <Button onClick={() => navigate('/')} className="w-full h-20 rounded-[2rem] bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-black text-2xl shadow-2xl transition-transform hover:scale-[1.02]">
+              <i className="fas fa-check-double mr-3"></i> Finish & Save Audit
+           </Button>
         </div>
       )}
     </div>

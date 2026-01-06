@@ -1,9 +1,8 @@
 
 import React, { useState } from 'react';
 import { UserProfile, VerificationResult, MatchStatus } from '../types';
-import { Card, Button, Badge, Input } from '../components/UI';
+import { Card, Button, Badge } from '../components/UI';
 import { Link } from 'react-router-dom';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useLanguage } from '../App';
 import { getHealthSearch } from '../services/geminiService';
 
@@ -19,15 +18,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, history }) => {
   const [searching, setSearching] = useState(false);
 
   const stats = {
-    total: history.length,
-    perfect: history.filter(h => h.status === MatchStatus.PERFECT_MATCH).length,
-    risky: history.filter(h => h.status === MatchStatus.NO_MATCH).length,
+    total: history?.length || 0,
+    perfect: history?.filter(h => h.status === MatchStatus.PERFECT_MATCH).length || 0,
   };
-
-  const chartData = history.slice(0, 7).reverse().map(h => ({
-    name: new Date(h.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }),
-    score: h.matchScore * 100
-  }));
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -43,146 +36,145 @@ const Dashboard: React.FC<DashboardProps> = ({ user, history }) => {
     }
   };
 
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <section className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-black text-slate-900">{t.dashboard}</h1>
-          <p className="text-slate-500 font-medium">{t.welcome}, {user.fullName.split(' ')[0]}!</p>
-        </div>
-        <div className="flex gap-2">
-          <Link to="/assistant">
-            <Button variant="secondary" className="h-12">
-              <i className="fas fa-user-md"></i>
-              {t.assistant}
-            </Button>
-          </Link>
-          <Link to="/verify">
-            <Button className="h-12 px-8">
-              <i className="fas fa-camera"></i>
-              {t.new_verification}
-            </Button>
-          </Link>
-        </div>
-      </section>
+  const displayName = user?.fullName ? user.fullName.split(' ')[0] : 'Patient';
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="border-l-4 border-l-blue-600">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">{t.total_checks}</p>
-              <h3 className="text-4xl font-black mt-1 text-slate-800">{stats.total}</h3>
-            </div>
-            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center">
-              <i className="fas fa-clipboard-check text-xl"></i>
-            </div>
-          </div>
-        </Card>
-        <Card className="border-l-4 border-l-green-600">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">{t.perfect_matches}</p>
-              <h3 className="text-4xl font-black mt-1 text-slate-800">{stats.perfect}</h3>
-            </div>
-            <div className="w-12 h-12 bg-green-50 text-green-600 rounded-2xl flex items-center justify-center">
-              <i className="fas fa-check-circle text-xl"></i>
-            </div>
-          </div>
-        </Card>
-        <Card className="border-l-4 border-l-red-600">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-slate-400 text-xs font-black uppercase tracking-widest">{t.critical_risks}</p>
-              <h3 className="text-4xl font-black mt-1 text-slate-800">{stats.risky}</h3>
-            </div>
-            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center">
-              <i className="fas fa-exclamation-triangle text-xl"></i>
-            </div>
-          </div>
-        </Card>
+  return (
+    <div className="space-y-10 animate-in fade-in slide-in-from-bottom-6 duration-700 pb-20 max-w-7xl mx-auto">
+      
+      <div className="px-4 space-y-2">
+         <Badge color="blue" className="px-5 py-1.5 rounded-full text-[9px] uppercase tracking-[0.2em] font-black">Central Health Console</Badge>
+         <h1 className="text-4xl sm:text-5xl font-black tracking-tighter text-slate-900 dark:text-white leading-[0.9]">
+            {t.welcome}, <span className="text-blue-600 dark:text-blue-400">{displayName}!</span>
+          </h1>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <Card className="lg:col-span-2" title="Deep Health Search (Thinking Mode Active)">
-          <div className="space-y-4">
-             <div className="flex gap-2">
-                <Input 
-                  placeholder="Ask complex health questions..." 
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                />
-                <Button onClick={handleSearch} disabled={searching} className="shrink-0">
-                   {searching ? <i className="fas fa-brain animate-pulse text-blue-400"></i> : <i className="fas fa-search"></i>}
-                </Button>
-             </div>
-             
-             {searching && (
-               <div className="flex items-center gap-3 p-4 bg-slate-50 rounded-2xl animate-pulse">
-                  <i className="fas fa-network-wired text-blue-600"></i>
-                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Gemini 3 Pro is thinking... (32k token budget)</span>
-               </div>
-             )}
-
-             {searchResults && (
-               <div className="p-4 bg-blue-50 rounded-2xl animate-in fade-in slide-in-from-top-2">
-                  <div className="prose prose-sm prose-slate max-w-none">
-                    <p className="text-slate-700 whitespace-pre-wrap">{searchResults.text}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <section className="bg-white dark:bg-slate-900 rounded-[3.5rem] p-10 shadow-2xl shadow-blue-500/10 border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center gap-6 relative overflow-hidden group">
+          <div className="absolute inset-0 bg-blue-50/20 dark:bg-blue-900/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="relative z-10 w-full space-y-4">
+            <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-[1.5rem] mx-auto flex items-center justify-center text-2xl">
+              <i className="fas fa-pills"></i>
+            </div>
+            <h2 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white">Medicine Safety</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed max-w-[250px] mx-auto">Verify pills against prescriptions instantly.</p>
+            <Link to="/verify" className="block relative group/btn pt-4">
+                <Button className="h-24 w-full text-xl rounded-[2rem] bg-blue-600 text-white hover:bg-blue-700 border-b-8 border-blue-800 dark:border-blue-900 shadow-2xl transform hover:-translate-y-1.5 active:translate-y-1 transition-all flex flex-col items-center justify-center p-0 font-black">
+                  <div className="flex items-center gap-3">
+                    <i className="fas fa-camera text-2xl"></i>
+                    <span>VERIFY MEDICINE</span>
                   </div>
-                  {searchResults.sources.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-blue-100">
-                      <p className="text-[10px] font-black uppercase text-blue-400 mb-2">Sources:</p>
-                      <div className="flex flex-wrap gap-2">
-                        {searchResults.sources.map((s, idx) => (
-                          <a key={idx} href={s.web?.uri} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline font-bold bg-white px-2 py-1 rounded-md border border-blue-200">
-                            {s.web?.title || 'Link'}
-                          </a>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-               </div>
-             )}
-
-             <div className="h-[200px] w-full mt-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                  <XAxis dataKey="name" stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#94a3b8" fontSize={10} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <Tooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  />
-                  <Line type="monotone" dataKey="score" stroke="#2563eb" strokeWidth={4} dot={{ fill: '#2563eb', strokeWidth: 2, r: 6, stroke: '#fff' }} activeDot={{ r: 8 }} />
-                </LineChart>
-              </ResponsiveContainer>
-             </div>
+                </Button>
+            </Link>
           </div>
-        </Card>
+        </section>
 
-        <div className="space-y-6">
-          <Card title="AI Tools">
-             <div className="space-y-3">
-               <Link to="/rates">
-                 <Button variant="ghost" className="w-full justify-start text-indigo-600 bg-indigo-50/50">
-                   <i className="fas fa-tag"></i>
-                   {t.medicine_rates}
-                 </Button>
-               </Link>
-               <Link to="/visualizer">
-                 <Button variant="ghost" className="w-full justify-start text-blue-600 bg-blue-50/50">
-                   <i className="fas fa-wand-magic-sparkles"></i>
-                   {t.visualizer}
-                 </Button>
-               </Link>
-               <Link to="/assistant">
-                 <Button variant="ghost" className="w-full justify-start text-slate-600 bg-slate-50/50">
-                   <i className="fas fa-user-md"></i>
-                   {t.ai_helper}
-                 </Button>
-               </Link>
-             </div>
-          </Card>
+        <section className="bg-white dark:bg-slate-900 rounded-[3.5rem] p-10 shadow-2xl shadow-indigo-500/10 border border-slate-100 dark:border-slate-800 flex flex-col items-center text-center gap-6 relative overflow-hidden group">
+          <div className="absolute inset-0 bg-indigo-50/20 dark:bg-indigo-900/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+          <div className="relative z-10 w-full space-y-4">
+            <div className="w-16 h-16 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-[1.5rem] mx-auto flex items-center justify-center text-2xl">
+              <i className="fas fa-file-medical"></i>
+            </div>
+            <h2 className="text-3xl font-black tracking-tighter text-slate-900 dark:text-white">Report Intelligence</h2>
+            <p className="text-slate-500 dark:text-slate-400 text-sm font-medium leading-relaxed max-w-[250px] mx-auto">Deep clinical scan of blood & lab reports.</p>
+            <Link to="/reports" className="block relative group/btn pt-4">
+                <Button className="h-24 w-full text-xl rounded-[2rem] bg-indigo-600 text-white hover:bg-indigo-700 border-b-8 border-indigo-800 dark:border-indigo-900 shadow-2xl transform hover:-translate-y-1.5 active:translate-y-1 transition-all flex flex-col items-center justify-center p-0 font-black">
+                  <div className="flex items-center gap-3">
+                    <i className="fas fa-microscope text-2xl"></i>
+                    <span>SCAN REPORTS</span>
+                  </div>
+                </Button>
+            </Link>
+          </div>
+        </section>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="lg:col-span-4 space-y-6">
+           <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-4">Verification Stats</h3>
+           <div className="grid grid-cols-1 gap-4">
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-50 dark:border-slate-800 flex items-center justify-between group">
+                 <div>
+                    <p className="text-3xl font-black text-slate-900 dark:text-white">{stats.total}</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Meds Checked</p>
+                 </div>
+                 <div className="w-12 h-12 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center text-xl group-hover:bg-blue-600 group-hover:text-white transition-all">
+                    <i className="fas fa-list-check"></i>
+                 </div>
+              </div>
+              <div className="bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-xl shadow-slate-200/40 dark:shadow-none border border-slate-50 dark:border-slate-800 flex items-center justify-between group">
+                 <div>
+                    <p className="text-3xl font-black text-slate-900 dark:text-white">Active</p>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">MediScan Engine</p>
+                 </div>
+                 <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center text-xl">
+                    <i className="fas fa-shield-virus"></i>
+                 </div>
+              </div>
+           </div>
+        </div>
+
+        <div className="lg:col-span-8 space-y-6">
+           <h3 className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] px-4">AI Clinical Inquiries</h3>
+           <Card className="rounded-[2.5rem] border-none shadow-2xl bg-slate-900 dark:bg-slate-800 text-white p-6 relative overflow-hidden transition-colors">
+              <div className="absolute top-0 right-0 p-12 opacity-5 pointer-events-none transform translate-x-1/4 -translate-y-1/4">
+                 <i className="fas fa-wand-sparkles text-[150px]"></i>
+              </div>
+              
+              <div className="relative z-10 space-y-6">
+                <div>
+                  <h4 className="text-xl font-black tracking-tight mb-1">Instant Health Assistant</h4>
+                  <p className="text-slate-400 text-xs font-medium">Verify interactions or clarify dosage instructions.</p>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <input 
+                    placeholder="Can I take paracetamol with this?" 
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                    className="flex-grow h-14 rounded-xl text-slate-900 px-6 bg-white dark:bg-slate-700 dark:text-white border-none focus:ring-4 focus:ring-blue-500/30 outline-none font-bold text-sm"
+                  />
+                  <Button onClick={handleSearch} disabled={searching} className="h-14 px-8 rounded-xl bg-blue-600 hover:bg-blue-500 font-black tracking-widest text-xs shadow-xl shadow-blue-500/20 uppercase">
+                     {searching ? <i className="fas fa-circle-notch animate-spin"></i> : 'Ask AI'}
+                  </Button>
+                </div>
+
+                {searchResults && (
+                  <div className="p-5 bg-white/5 backdrop-blur-3xl rounded-2xl border border-white/10 animate-in zoom-in-95 duration-500">
+                     <p className="text-slate-300 leading-relaxed font-medium italic mb-4 text-sm">"{searchResults.text}"</p>
+                     <div className="flex items-center gap-2 text-[8px] font-black uppercase text-blue-400 tracking-widest">
+                        <i className="fas fa-check-double"></i>
+                        Clinical Data Grounded by Gemini Search
+                     </div>
+                  </div>
+                )}
+              </div>
+           </Card>
+
+           <div className="grid grid-cols-2 gap-4">
+              <Link to="/rates" className="block group/card">
+                 <div className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] hover:border-blue-300 dark:hover:border-blue-800 transition-all shadow-lg shadow-slate-200/30 dark:shadow-none flex flex-col gap-3">
+                    <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center text-lg group-hover/card:bg-indigo-600 group-hover/card:text-white transition-all">
+                       <i className="fas fa-tag"></i>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 dark:text-white tracking-tight text-sm">Market Rates</h4>
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Price Check</p>
+                    </div>
+                 </div>
+              </Link>
+              <Link to="/visualizer" className="block group/card">
+                 <div className="p-6 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-[2rem] hover:border-blue-300 dark:hover:border-blue-800 transition-all shadow-lg shadow-slate-200/30 dark:shadow-none flex flex-col gap-3">
+                    <div className="w-10 h-10 bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center text-lg group-hover/card:bg-purple-600 group-hover/card:text-white transition-all">
+                       <i className="fas fa-eye"></i>
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 dark:text-white tracking-tight text-sm">Pill Lookup</h4>
+                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Visual Search</p>
+                    </div>
+                 </div>
+              </Link>
+           </div>
         </div>
       </div>
     </div>
