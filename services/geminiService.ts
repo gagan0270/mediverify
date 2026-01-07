@@ -7,6 +7,7 @@ import {
   VerificationResult, 
   Language, 
   ReportAnalysis, 
+  AlertSeverity
 } from "../types";
 
 const getLanguageInstruction = (lang: Language) => {
@@ -19,13 +20,40 @@ const getLanguageInstruction = (lang: Language) => {
   return instructions[lang] || instructions.en;
 };
 
+/**
+ * Helper to downsample base64 images for faster API transmission
+ */
+const resizeImage = (base64Str: string, maxWidth = 1024): Promise<string> => {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.src = base64Str;
+  });
+};
+
 export const analyzeHealthImage = async (image: string, lang: Language = 'en'): Promise<string> => {
+  const optimizedImage = await resizeImage(image);
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: 'gemini-3-pro-preview',
     contents: {
       parts: [
-        { inlineData: { data: image.split(',')[1], mimeType: 'image/jpeg' } },
+        { inlineData: { data: optimizedImage.split(',')[1], mimeType: 'image/jpeg' } },
         { text: `Analyze this medical image in extreme detail. Provide a comprehensive clinical explanation using deep reasoning. ${getLanguageInstruction(lang)}` }
       ]
     },
@@ -96,6 +124,7 @@ export const analyzeMedicalReports = async (
   profile: UserProfile, 
   lang: Language = 'en'
 ): Promise<ReportAnalysis> => {
+  const optimizedImage = mimeType.startsWith('image/') ? await resizeImage(base64Data) : base64Data;
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const prompt = `
     ROLE: Senior Clinical Pathologist.
@@ -111,7 +140,7 @@ export const analyzeMedicalReports = async (
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: base64Data.split(',')[1], mimeType: mimeType } },
+        { inlineData: { data: optimizedImage.split(',')[1], mimeType: mimeType } },
         { text: prompt }
       ]
     },
@@ -153,19 +182,20 @@ export const analyzeMedicalReports = async (
 
   return {
     id: crypto.randomUUID(),
-    imageUrl: base64Data,
+    imageUrl: optimizedImage,
     mimeType: mimeType,
     ...JSON.parse(response.text || '{}')
   };
 };
 
 export const analyzePrescription = async (imageBase64: string, lang: Language = 'en'): Promise<PrescriptionData> => {
+  const optimizedImage = await resizeImage(imageBase64);
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
+        { inlineData: { data: optimizedImage.split(',')[1], mimeType: "image/jpeg" } },
         { text: `Extract all medicine details. CRITICAL: Categorize each item as 'Tablet', 'Syrup', 'Injection', 'Cream', 'Drops', or 'Other'. ${getLanguageInstruction(lang)}` }
       ]
     },
@@ -198,12 +228,13 @@ export const analyzePrescription = async (imageBase64: string, lang: Language = 
 };
 
 export const identifyTablet = async (imageBase64: string, lang: Language = 'en'): Promise<TabletData> => {
+  const optimizedImage = await resizeImage(imageBase64);
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
       parts: [
-        { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
+        { inlineData: { data: optimizedImage.split(',')[1], mimeType: "image/jpeg" } },
         { text: `Identify this medication pill. Provide comprehensive details including Pharmacological Class and Mechanism of Action. ${getLanguageInstruction(lang)}` }
       ]
     },
@@ -230,26 +261,48 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
       }
     }
   });
-  const data = JSON.parse(response.text || '{}');
-  return { ...data, imageUrl: imageBase64, confidence: data.confidence || 0.9 };
+  const text = response.text;
+  if (!text) throw new Error("Empty response from AI identification service.");
+  
+  const data = JSON.parse(text);
+  return { ...data, imageUrl: optimizedImage, confidence: data.confidence || 0.9 };
 };
 
 export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionData[], t: TabletData[], l: Language = 'en'): Promise<VerificationResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  
-  // Flatten all medicines for the audit
   const masterMedicineList = allPr.flatMap(pr => pr.medicines);
 
   const prompt = `
-    CLINICAL SAFETY AUDIT: Compare prescribed meds vs physical pills.
+    ROLE: Senior Clinical Pharmacist.
+    TASK: Perform a Multi-Factor Clinical Audit comparing prescribed medications against physical identified pills.
     
     PATIENT PROFILE: ${JSON.stringify(p)}
     ALL PRESCRIPTIONS: ${JSON.stringify(masterMedicineList)}
     IDENTIFIED PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint})))}
+    
+    SCORING ALGORITHM RULES:
+    1. Identity Score (0-1): 
+       - 1.0: Exact molecule and name match.
+       - 0.5: Different brand but same active generic molecule.
+       - 0.0: Different chemical class or molecule.
+    2. Posology (Dosage) Score (0-1):
+       - 1.0: Exact strength (e.g., 500mg vs 500mg).
+       - 0.7: Minimal difference (e.g., 500mg vs 650mg).
+       - 0.3: High difference (e.g., 5mg vs 50mg).
+       - 0.0: Unknown or dangerous mismatch.
+    3. Chronology (Frequency) Score (0-1):
+       - 1.0: Exact match (e.g., BID vs Twice daily).
+       - 0.5: Mismatch in timing but same daily count.
+       - 0.0: Total mismatch.
 
-    Provide EXTREMELY descriptive text for 'discrepancyDetails' explaining WHY a mismatch occurred.
+    SEVERITY LEVELS:
+    - CRITICAL: Life-threatening mismatch (Wrong drug, 10x dosage error, or allergy conflict).
+    - MAJOR_WARNING: Clinically significant mismatch (Wrong brand with different efficacy, 2x dosage error).
+    - WARNING: Minor discrepancy (Slight dosage variance, timing mismatch).
+    - INFO: Perfect match or minimal note.
+
     ${getLanguageInstruction(l)}
-    Output valid JSON.
+    Output valid JSON only.
   `;
 
   const response = await ai.models.generateContent({
@@ -261,8 +314,8 @@ export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionDa
       responseSchema: {
         type: Type.OBJECT,
         properties: {
-          status: { type: Type.STRING },
-          matchScore: { type: Type.NUMBER },
+          status: { type: Type.STRING, description: "One of: PERFECT_MATCH, PARTIAL_MATCH, NO_MATCH, REQUIRES_REVIEW" },
+          matchScore: { type: Type.NUMBER, description: "Aggregated safety score from 0 to 1" },
           identifiedTablets: {
             type: Type.ARRAY,
             items: {
@@ -270,17 +323,16 @@ export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionDa
               properties: {
                 name: { type: Type.STRING },
                 isMatch: { type: Type.BOOLEAN },
-                matchStatus: { type: Type.STRING },
+                matchSeverity: { type: Type.STRING, description: "CRITICAL, MAJOR_WARNING, WARNING, INFO" },
                 identityScore: { type: Type.NUMBER },
                 posologyScore: { type: Type.NUMBER },
                 chronologyScore: { type: Type.NUMBER },
+                scoreExplanation: { type: Type.STRING, description: "Nuanced reason for the given scores" },
                 discrepancyDetails: { type: Type.STRING },
                 genericName: { type: Type.STRING },
-                uses: { type: Type.STRING },
-                sideEffects: { type: Type.STRING },
-                specialWarnings: { type: Type.STRING },
                 pharmacologyClass: { type: Type.STRING },
-                mechanismOfAction: { type: Type.STRING }
+                mechanismOfAction: { type: Type.STRING },
+                specialWarnings: { type: Type.STRING }
               }
             }
           },
@@ -300,7 +352,10 @@ export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionDa
     }
   });
   
-  const analysis = JSON.parse(response.text || '{}');
+  const text = response.text;
+  if (!text) throw new Error("Empty safety verification response.");
+  
+  const analysis = JSON.parse(text);
   const finalTablets = t.map((orig, i) => ({ 
     ...orig, 
     ...(analysis.identifiedTablets || [])[i] 
@@ -309,7 +364,7 @@ export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionDa
   return { 
     id: crypto.randomUUID(), 
     timestamp: new Date().toISOString(), 
-    prescription: allPr[0], // Primary for compat
+    prescription: allPr[0],
     allPrescriptions: allPr,
     identifiedTablets: finalTablets,
     matchStats: {

@@ -70,11 +70,13 @@ export interface TabletData {
   mechanismOfAction?: string;
   isMatch?: boolean;
   matchStatus?: 'PERFECT' | 'PARTIAL' | 'MISMATCH' | 'UNKNOWN';
+  matchSeverity?: AlertSeverity;
   discrepancyDetails?: string;
   colorContrastWarning?: string;
   identityScore?: number;
   posologyScore?: number;
   chronologyScore?: number;
+  scoreExplanation?: string;
 }
 
 export interface ReportComponent {
@@ -116,7 +118,7 @@ export interface VerificationResult {
     title: string;
     description: string;
   }>;
-  prescription: PrescriptionData; // Note: Usually the primary or last one for legacy compat
+  prescription: PrescriptionData; 
   allPrescriptions?: PrescriptionData[];
   identifiedTablets: TabletData[];
   matchStats: {

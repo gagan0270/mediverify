@@ -22,6 +22,9 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
   const [loadingMsg, setLoadingMsg] = useState('');
   const [loadingSubMsg, setLoadingSubMsg] = useState('');
   
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [currentAuditItem, setCurrentAuditItem] = useState(0);
+
   const [processingProgress, setProcessingProgress] = useState<{current: number, total: number} | null>(null);
 
   const [allPrescriptions, setAllPrescriptions] = useState<PrescriptionData[]>([]);
@@ -39,14 +42,50 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
+    let interval: any;
+    if (loading) {
+      setElapsedSeconds(0);
+      interval = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [loading]);
+
+  useEffect(() => {
+    let interval: any;
+    if (loading && step === 3) {
+      let currentIdx = 0;
+      const totalItems = capturedTablets.length;
+      const checkpoints = [
+        "Initializing Neural Safety Audit...",
+        "Cross-referencing drug database...",
+        "Analyzing dosage mismatch risks...",
+        "Scanning for allergy conflicts...",
+        "Finalizing clinical integrity score..."
+      ];
+      let checkIdx = 0;
+
+      interval = setInterval(() => {
+        if (currentIdx < totalItems) {
+          setCurrentAuditItem(currentIdx + 1);
+          setLoadingSubMsg(`Auditing ${capturedTablets[currentIdx].name}... (${currentIdx + 1} of ${totalItems})`);
+          currentIdx++;
+        } else {
+          setLoadingSubMsg(checkpoints[checkIdx % checkpoints.length]);
+          checkIdx++;
+        }
+      }, 2500);
+    }
+    return () => clearInterval(interval);
+  }, [loading, step, capturedTablets]);
+
+  useEffect(() => {
     const loadModel = async () => {
       try {
-        try {
-          await (tf as any).setBackend('webgl');
-        } catch (e) {
-          console.warn("WebGL not supported, falling back to CPU");
-          await (tf as any).setBackend('cpu');
-        }
+        await (tf as any).setBackend('webgl').catch(() => (tf as any).setBackend('cpu'));
         await (tf as any).ready();
         const model = await cocoSsd.load();
         setTfModel(model);
@@ -155,15 +194,20 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
       const base64 = canvas.toDataURL('image/jpeg', 0.95);
       const currentBBox = lastBBox;
       stopCamera();
+      
       setLoading(true);
-      setLoadingMsg(t.analyzing);
+      setLoadingMsg("Identifying Medication");
+      setLoadingSubMsg("Optimizing Clinical Image...");
+      
       try {
         const enhanced = await enhanceImage(base64, false, currentBBox || undefined);
+        setLoadingSubMsg("Consulting Medical Knowledge Graph...");
         const data = await identifyTablet(enhanced, language);
         setCapturedTablets(prev => [...prev, data]);
         setStep(3);
       } catch (err) {
-        alert("Pill identification failed.");
+        alert("Pill identification failed. Ensure the pill is clearly visible and has lighting.");
+        console.error(err);
       } finally {
         setLoading(false);
       }
@@ -221,7 +265,7 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
       setCapturedTablets(prev => [...prev, ...newTablets]);
       setStep(3);
     } catch (err) {
-      alert('Tablet identification failed.');
+      alert('Tablet identification failed. Please check your network connection.');
     } finally {
       setProcessingProgress(null);
     }
@@ -230,7 +274,7 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
   const handleVerify = async () => {
     if (allPrescriptions.length === 0 || capturedTablets.length === 0) return;
     setLoading(true);
-    setLoadingMsg(t.analyzing);
+    setLoadingMsg("Safety Verification in Progress");
     setLoadingSubMsg("Consolidated Safety Audit with Gemini Pro...");
     try {
       const result = await verifyMedicineSafety(user, allPrescriptions, capturedTablets, language);
@@ -238,7 +282,7 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
       onComplete(result);
       setStep(4);
     } catch (err) {
-      alert("Safety audit failed.");
+      alert("Safety audit failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -263,13 +307,43 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
     others: masterMedicineList.filter(m => m.type !== 'Tablet' && m.type !== 'Syrup').length,
   };
 
+  const getSeverityColor = (sev?: AlertSeverity) => {
+    switch (sev) {
+      case AlertSeverity.CRITICAL: return 'red';
+      case AlertSeverity.MAJOR_WARNING: return 'yellow';
+      case AlertSeverity.WARNING: return 'blue';
+      case AlertSeverity.INFO: return 'green';
+      default: return 'white';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-32 space-y-12 animate-in fade-in max-w-3xl mx-auto px-6">
-        <div className="w-24 h-24 border-8 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
-        <div className="text-center space-y-2">
+        <div className="relative">
+          <div className="w-32 h-32 border-8 border-blue-100 border-t-blue-600 rounded-full animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center font-black text-blue-600 text-lg">
+            {elapsedSeconds}s
+          </div>
+          <div className="absolute inset-0 w-32 h-32 border-4 border-blue-400 rounded-full animate-ping opacity-20"></div>
+        </div>
+        
+        <div className="text-center space-y-4">
            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">{loadingMsg}</h2>
-           <p className="text-slate-500 dark:text-slate-400 font-medium italic">{loadingSubMsg}</p>
+           
+           <div className="space-y-2">
+              <Badge color="blue" className="px-4 py-1 animate-pulse">
+                {capturedTablets.length > 0 && currentAuditItem > 0 ? `ITEM ${currentAuditItem} OF ${capturedTablets.length}` : 'AI PROCESSING'}
+              </Badge>
+              <p className="text-slate-500 dark:text-slate-400 font-medium italic transition-all duration-500">{loadingSubMsg}</p>
+           </div>
+
+           <div className="w-64 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full mx-auto overflow-hidden mt-6">
+             <div 
+               className="h-full bg-blue-600 transition-all duration-700 ease-out" 
+               style={{ width: `${capturedTablets.length > 0 ? (currentAuditItem / capturedTablets.length) * 100 : 50}%` }}
+             ></div>
+           </div>
         </div>
       </div>
     );
@@ -384,15 +458,31 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
                 <h3 className="text-2xl font-black text-slate-800 dark:text-slate-100">{t.step2_title}</h3>
                 <p className="text-slate-500 dark:text-slate-400 font-medium max-w-sm mx-auto">{t.step2_desc}</p>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Button onClick={startCamera} className="h-16 rounded-2xl text-lg font-black bg-indigo-600 shadow-xl shadow-indigo-500/10">
-                   <i className="fas fa-microscope mr-2"></i> {t.step2_btn_live}
-                </Button>
-                <input type="file" multiple className="hidden" ref={tabletGalleryRef} onChange={handleGalleryTabletUpload} accept="image/*" />
-                <Button variant="secondary" onClick={() => tabletGalleryRef.current?.click()} className="h-16 rounded-2xl text-lg font-black shadow-xl">
-                   <i className="fas fa-images mr-2"></i> {t.step2_btn_gallery}
-                </Button>
-              </div>
+
+              {processingProgress ? (
+                <div className="p-8 bg-blue-50 dark:bg-blue-900/20 rounded-[2rem] border border-blue-100 dark:border-blue-800 animate-in fade-in">
+                  <div className="flex justify-between items-end mb-3">
+                    <p className="font-black text-sm text-blue-600 uppercase tracking-widest">{t.processing}...</p>
+                    <p className="font-black text-lg text-blue-800 dark:text-blue-200">{processingProgress.current} {t.scanned_of} {processingProgress.total}</p>
+                  </div>
+                  <div className="w-full h-4 bg-white dark:bg-slate-800 rounded-full overflow-hidden border border-blue-100 dark:border-blue-700">
+                    <div 
+                      className="h-full bg-blue-600 transition-all duration-500" 
+                      style={{ width: `${(processingProgress.current / processingProgress.total) * 100}%` }}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Button onClick={startCamera} className="h-16 rounded-2xl text-lg font-black bg-indigo-600 shadow-xl shadow-indigo-500/10">
+                    <i className="fas fa-microscope mr-2"></i> {t.step2_btn_live}
+                  </Button>
+                  <input type="file" multiple className="hidden" ref={tabletGalleryRef} onChange={handleGalleryTabletUpload} accept="image/*" />
+                  <Button variant="secondary" onClick={() => tabletGalleryRef.current?.click()} className="h-16 rounded-2xl text-lg font-black shadow-xl">
+                    <i className="fas fa-images mr-2"></i> {t.step2_btn_gallery}
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-slate-900 dark:border-slate-800 bg-black">
@@ -493,10 +583,15 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
                              <h4 className="font-black text-3xl text-slate-900 dark:text-white leading-none">{tablet.name}</h4>
                           </div>
                        </div>
-                       <div className="text-right">
+                       <div className="text-right flex flex-col items-end gap-2">
                           <Badge color={tablet.isMatch ? 'green' : 'red'} className="text-sm px-4 py-1.5 rounded-xl uppercase">
                              {tablet.isMatch ? t.match : t.mismatch}
                           </Badge>
+                          {tablet.matchSeverity && (
+                            <Badge color={getSeverityColor(tablet.matchSeverity)} className="text-[10px] px-3 font-black tracking-widest">
+                               {tablet.matchSeverity}
+                            </Badge>
+                          )}
                        </div>
                     </div>
 
@@ -524,20 +619,26 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
                                       <p className={`text-[9px] font-black mb-1 uppercase tracking-tight ${tablet.posologyScore! >= 0.8 ? 'text-emerald-600' : 'text-rose-600'}`}>{t.dosage}</p>
                                       <p className="text-xl font-black text-slate-800 dark:text-slate-100">{tablet.dosage || 'Unknown'}</p>
                                    </div>
-                                   <i className={`fas ${tablet.posologyScore! >= 0.8 ? 'fa-check-circle text-emerald-500' : 'fa-times-circle text-rose-500'} text-2xl`}></i>
+                                   <div className="text-right flex flex-col items-end">
+                                      <i className={`fas ${tablet.posologyScore! >= 0.8 ? 'fa-check-circle text-emerald-500' : 'fa-times-circle text-rose-500'} text-2xl mb-1`}></i>
+                                      <span className="text-[9px] font-black opacity-40">{(tablet.posologyScore! * 100).toFixed(0)}%</span>
+                                   </div>
                                 </div>
                                 <div className={`p-6 rounded-2xl border flex justify-between items-center transition-all ${tablet.chronologyScore! >= 0.8 ? 'bg-emerald-50 dark:bg-emerald-950/20 border-emerald-100' : 'bg-rose-50 dark:bg-rose-950/20 border-rose-100'}`}>
                                    <div>
                                       <p className={`text-[9px] font-black mb-1 uppercase tracking-tight ${tablet.chronologyScore! >= 0.8 ? 'text-emerald-600' : 'text-rose-600'}`}>{t.frequency}</p>
                                       <p className="text-xl font-black text-slate-800 dark:text-slate-100">{tablet.frequency || 'Unknown'}</p>
                                    </div>
-                                   <i className={`fas ${tablet.chronologyScore! >= 0.8 ? 'fa-check-circle text-emerald-500' : 'fa-times-circle text-rose-500'} text-2xl`}></i>
+                                   <div className="text-right flex flex-col items-end">
+                                      <i className={`fas ${tablet.chronologyScore! >= 0.8 ? 'fa-check-circle text-emerald-500' : 'fa-times-circle text-rose-500'} text-2xl mb-1`}></i>
+                                      <span className="text-[9px] font-black opacity-40">{(tablet.chronologyScore! * 100).toFixed(0)}%</span>
+                                   </div>
                                 </div>
                              </div>
                           </div>
                        </div>
 
-                       {tablet.discrepancyDetails && (
+                       {(tablet.discrepancyDetails || tablet.scoreExplanation) && (
                           <div className="p-8 bg-amber-50 dark:bg-amber-950/20 rounded-[2.5rem] border-2 border-amber-100 dark:border-amber-900/30">
                              <div className="flex gap-4 items-start">
                                 <div className="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
@@ -545,7 +646,9 @@ const MedicineVerificationFlow: React.FC<Props> = ({ user, onComplete }) => {
                                 </div>
                                 <div>
                                    <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest mb-2">{t.audit_trace}</p>
-                                   <p className="text-lg font-bold text-amber-900 dark:text-amber-200 leading-relaxed italic">"{tablet.discrepancyDetails}"</p>
+                                   <p className="text-lg font-bold text-amber-900 dark:text-amber-200 leading-relaxed italic">
+                                      "{tablet.discrepancyDetails || tablet.scoreExplanation}"
+                                   </p>
                                 </div>
                              </div>
                           </div>
