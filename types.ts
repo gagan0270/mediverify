@@ -36,16 +36,20 @@ export interface UserProfile {
   };
 }
 
+export interface PrescriptionMedicine {
+  name: string;
+  dosage: string;
+  frequency: string;
+  instructions: string;
+  type?: 'Tablet' | 'Syrup' | 'Injection' | 'Cream' | 'Drops' | 'Other';
+}
+
 export interface PrescriptionData {
+  id: string;
   doctorName: string;
   clinicName: string;
   date: string;
-  medicines: Array<{
-    name: string;
-    dosage: string;
-    frequency: string;
-    instructions: string;
-  }>;
+  medicines: PrescriptionMedicine[];
 }
 
 export interface TabletData {
@@ -62,6 +66,8 @@ export interface TabletData {
   genericName?: string;
   sideEffects?: string;
   specialWarnings?: string;
+  pharmacologyClass?: string;
+  mechanismOfAction?: string;
   isMatch?: boolean;
   matchStatus?: 'PERFECT' | 'PARTIAL' | 'MISMATCH' | 'UNKNOWN';
   discrepancyDetails?: string;
@@ -110,7 +116,8 @@ export interface VerificationResult {
     title: string;
     description: string;
   }>;
-  prescription: PrescriptionData;
+  prescription: PrescriptionData; // Note: Usually the primary or last one for legacy compat
+  allPrescriptions?: PrescriptionData[];
   identifiedTablets: TabletData[];
   matchStats: {
     matchedCount: number;

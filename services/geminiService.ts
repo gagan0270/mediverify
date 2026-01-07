@@ -166,7 +166,7 @@ export const analyzePrescription = async (imageBase64: string, lang: Language = 
     contents: {
       parts: [
         { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
-        { text: `Extract all medicine details accurately. Focus on names and dosage clarity. ${getLanguageInstruction(lang)}` }
+        { text: `Extract all medicine details. CRITICAL: Categorize each item as 'Tablet', 'Syrup', 'Injection', 'Cream', 'Drops', or 'Other'. ${getLanguageInstruction(lang)}` }
       ]
     },
     config: {
@@ -185,7 +185,8 @@ export const analyzePrescription = async (imageBase64: string, lang: Language = 
                 name: { type: Type.STRING },
                 dosage: { type: Type.STRING },
                 frequency: { type: Type.STRING },
-                instructions: { type: Type.STRING }
+                instructions: { type: Type.STRING },
+                type: { type: Type.STRING, description: "Categorization: Tablet, Syrup, Injection, Cream, Drops, Other" }
               }
             }
           }
@@ -193,7 +194,7 @@ export const analyzePrescription = async (imageBase64: string, lang: Language = 
       }
     }
   });
-  return JSON.parse(response.text || '{}');
+  return { id: crypto.randomUUID(), ...JSON.parse(response.text || '{}') };
 };
 
 export const identifyTablet = async (imageBase64: string, lang: Language = 'en'): Promise<TabletData> => {
@@ -203,7 +204,7 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
     contents: {
       parts: [
         { inlineData: { data: imageBase64.split(',')[1], mimeType: "image/jpeg" } },
-        { text: `Identify this medication pill from the photo. Provide generic name, uses, side effects and specific warnings. ${getLanguageInstruction(lang)}` }
+        { text: `Identify this medication pill. Provide comprehensive details including Pharmacological Class and Mechanism of Action. ${getLanguageInstruction(lang)}` }
       ]
     },
     config: {
@@ -222,7 +223,9 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
           uses: { type: Type.STRING },
           genericName: { type: Type.STRING },
           sideEffects: { type: Type.STRING },
-          specialWarnings: { type: Type.STRING }
+          specialWarnings: { type: Type.STRING },
+          pharmacologyClass: { type: Type.STRING },
+          mechanismOfAction: { type: Type.STRING }
         }
       }
     }
@@ -231,28 +234,22 @@ export const identifyTablet = async (imageBase64: string, lang: Language = 'en')
   return { ...data, imageUrl: imageBase64, confidence: data.confidence || 0.9 };
 };
 
-export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData, t: TabletData[], l: Language = 'en'): Promise<VerificationResult> => {
+export const verifyMedicineSafety = async (p: UserProfile, allPr: PrescriptionData[], t: TabletData[], l: Language = 'en'): Promise<VerificationResult> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  
+  // Flatten all medicines for the audit
+  const masterMedicineList = allPr.flatMap(pr => pr.medicines);
+
   const prompt = `
-    CLINICAL SAFETY AUDIT: Perform a rigorous cross-reference check between the prescribed medications and the physical tablet identified.
+    CLINICAL SAFETY AUDIT: Compare prescribed meds vs physical pills.
     
     PATIENT PROFILE: ${JSON.stringify(p)}
-    PRESCRIPTION: ${JSON.stringify(pr)}
-    IDENTIFIED PHYSICAL PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint, color: x.color})))}
+    ALL PRESCRIPTIONS: ${JSON.stringify(masterMedicineList)}
+    IDENTIFIED PILLS: ${JSON.stringify(t.map(x => ({name: x.name, dosage: x.dosage, imprint: x.imprint})))}
 
-    NUANCED CLINICAL SCORING (0.0 to 1.0):
-    1. identityScore: 1.0 for same chemical/brand, 0.8 for generic equivalent, 0.5 for same class but different drug, 0.0 for dangerous mismatch.
-    2. posologyScore: 1.0 for exact dosage match (e.g. 500mg vs 500mg), 0.6 for minor difference or half/double dose where manageable, 0.0 for dangerous variance.
-    3. chronologyScore: 1.0 for matching frequency (e.g. 1-0-1 vs BD), 0.7 for minor timing difference, 0.0 for critical frequency mismatch.
-
-    SEVERITY LEVELS:
-    - CRITICAL: Life-threatening mismatch (e.g. cardiac med vs painkiller) or 10x dosage error.
-    - MAJOR_WARNING: Confirmed discrepancy in dosage strength or frequency that could cause adverse effects.
-    - WARNING: Substitution found (Generic vs Brand) or naming confusion without clinical danger.
-    - INFO: Verified match with helpful administration tips.
-
+    Provide EXTREMELY descriptive text for 'discrepancyDetails' explaining WHY a mismatch occurred.
     ${getLanguageInstruction(l)}
-    Output ONLY valid JSON.
+    Output valid JSON.
   `;
 
   const response = await ai.models.generateContent({
@@ -278,11 +275,12 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
                 posologyScore: { type: Type.NUMBER },
                 chronologyScore: { type: Type.NUMBER },
                 discrepancyDetails: { type: Type.STRING },
-                colorContrastWarning: { type: Type.STRING },
                 genericName: { type: Type.STRING },
                 uses: { type: Type.STRING },
                 sideEffects: { type: Type.STRING },
-                specialWarnings: { type: Type.STRING }
+                specialWarnings: { type: Type.STRING },
+                pharmacologyClass: { type: Type.STRING },
+                mechanismOfAction: { type: Type.STRING }
               }
             }
           },
@@ -311,12 +309,13 @@ export const verifyMedicineSafety = async (p: UserProfile, pr: PrescriptionData,
   return { 
     id: crypto.randomUUID(), 
     timestamp: new Date().toISOString(), 
-    prescription: pr, 
+    prescription: allPr[0], // Primary for compat
+    allPrescriptions: allPr,
     identifiedTablets: finalTablets,
     matchStats: {
       matchedCount: finalTablets.filter(t => t.isMatch).length,
       unmatchedCount: finalTablets.filter(t => !t.isMatch).length,
-      totalPrescribed: pr.medicines.length
+      totalPrescribed: masterMedicineList.length
     },
     ...analysis 
   };
